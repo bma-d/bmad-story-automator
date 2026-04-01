@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+
+const rootDir = path.resolve(__dirname, "..");
+const installScript = path.join(rootDir, "install.sh");
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(rootDir, "package.json"), "utf8")
+);
+const args = process.argv.slice(2);
+
+function printUsage() {
+  console.log(`bmad-story-automator v${packageJson.version}
+
+Usage:
+  npx bmad-story-automator
+  npx bmad-story-automator <bmad-project-root>
+
+Options:
+  -h, --help     Show help
+  -v, --version  Show version
+`);
+}
+
+if (args.includes("-h") || args.includes("--help")) {
+  printUsage();
+  process.exit(0);
+}
+
+if (args.includes("-v") || args.includes("--version")) {
+  console.log(packageJson.version);
+  process.exit(0);
+}
+
+if (process.platform === "win32") {
+  console.error("Error: Unsupported OS: Windows (supported: macOS, Linux)");
+  process.exit(1);
+}
+
+if (args.length > 1) {
+  printUsage();
+  process.exit(1);
+}
+
+const targetRoot = args.length === 0 ? process.cwd() : args[0];
+
+const result = spawnSync("bash", [installScript, targetRoot], {
+  cwd: rootDir,
+  stdio: "inherit"
+});
+
+if (result.error) {
+  console.error(`Error: Failed to run installer: ${result.error.message}`);
+  process.exit(1);
+}
+
+process.exit(result.status ?? 1);

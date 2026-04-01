@@ -1,0 +1,31 @@
+{
+  "name": "bmad-story-automator",
+  "version": "1.12.0",
+  "description": "Install the BMAD story-automator workflow bundle into a BMAD project.",
+  "bin": {
+    "bmad-story-automator": "bin/bmad-story-automator"
+  },
+  "files": [
+    "bin/",
+    "docs/",
+    "install.sh",
+    "payload/",
+    "README.md",
+    "ref.png",
+    "source/"
+  ],
+  "scripts": {
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "bmad",
+    "claude",
+    "codex",
+    "workflow",
+    "automation",
+    "python"
+  ]
+}

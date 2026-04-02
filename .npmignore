@@ -1,0 +1,4 @@
+source/build/
+source/dist/
+source/*.egg-info/
+source/src/**/__pycache__/

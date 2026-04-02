@@ -2,6 +2,7 @@
   "name": "bmad-story-automator",
   "version": "1.12.0",
   "description": "Install the BMAD story-automator workflow bundle into a BMAD project.",
+  "license": "MIT",
   "bin": {
     "bmad-story-automator": "bin/bmad-story-automator"
   },
@@ -15,7 +16,9 @@
     "source/"
   ],
   "scripts": {
-    "pack:dry-run": "npm pack --dry-run"
+    "pack:dry-run": "npm pack --dry-run",
+    "test:smoke": "bash scripts/smoke-test.sh",
+    "verify": "npm run pack:dry-run && npm run test:smoke"
   },
   "engines": {
     "node": ">=18"

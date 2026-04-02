@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: npm pack dry run
+        run: npm run pack:dry-run
+
+      - name: Build wheel
+        run: python -m build source
+
+      - name: Install Python package
+        run: python -m pip install ./source
+
+      - name: Python CLI help
+        run: PYTHONPATH=source/src python -m story_automator --help
+
+      - name: Wrapper CLI help
+        run: source/bin/story-automator --help
+
+      - name: Installer smoke
+        run: npm run test:smoke

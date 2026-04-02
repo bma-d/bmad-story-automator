@@ -4,6 +4,8 @@
 
 Portable bundle with source for BMAD `story-automator`, packaged from the Python port and renamed so the install surface drops the `-py` suffix.
 
+This repository is the Python port of [`bma-d/bmad-story-automator-go`](https://github.com/bma-d/bmad-story-automator-go). It has been tested less than the Go implementation, so treat the Go repository as the more battle-tested reference.
+
 Run this after planning is complete.
 
 ## Quickstart

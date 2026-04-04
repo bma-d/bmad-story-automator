@@ -1,6 +1,6 @@
 {
   "name": "bmad-story-automator",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "Install the BMAD story-automator workflow bundle into a BMAD project.",
   "license": "MIT",
   "bin": {

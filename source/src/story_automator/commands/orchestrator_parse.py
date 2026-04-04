@@ -58,7 +58,7 @@ def _build_parse_prompt(step: str, content: str) -> str:
         label = "dev-story"
     elif step == "auto":
         schema = '{"status":"SUCCESS|FAILURE|AMBIGUOUS","tests_added":N,"coverage_improved":true/false,"summary":"brief description","next_action":"proceed|retry|escalate"}'
-        label = "testarch-automate"
+        label = "automate-tests"
     elif step == "review":
         schema = '{"status":"SUCCESS|FAILURE|AMBIGUOUS","issues_found":{"critical":N,"high":N,"medium":N,"low":N},"all_fixed":true/false,"summary":"brief description","next_action":"proceed|retry|escalate"}'
         label = "code-review"

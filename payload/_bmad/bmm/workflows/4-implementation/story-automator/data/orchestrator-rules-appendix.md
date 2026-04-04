@@ -11,7 +11,7 @@ Pattern: `sa-{project_slug}-{timestamp}-e{epic}-s{N}-{type}` where type = `creat
 
 ### Story ID Requirement
 
-**create-story, dev-story, code-review, testarch-automate** — All require the story ID as a positional argument.
+**create-story, dev-story, code-review, automate (`testarch-automate` or `qa-generate-e2e-tests`)** — All require the story ID as a positional argument.
 
 **WRONG:**
 ```bash

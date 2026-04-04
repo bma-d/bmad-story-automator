@@ -129,18 +129,20 @@ Story ID: STORY_ID" --full-auto
 
 ---
 
-## testarch-automate
+## automate
 
 **Claude:**
 ```bash
 tmux send-keys -t "SESSION" 'claude --dangerously-skip-permissions "/bmad-tea-testarch-automate STORY_ID"' Enter
+# fresh BMAD fallback:
+tmux send-keys -t "SESSION" 'claude --dangerously-skip-permissions "/bmad-bmm-qa-generate-e2e-tests STORY_ID"' Enter
 ```
 
 **Codex (v1.3.0):**
 ```bash
-codex exec "Execute the BMAD testarch-automate workflow for story STORY_ID.
+codex exec "Execute the BMAD automate workflow for story STORY_ID.
 
-Workflow location: use the installed testarch-automate workflow under _bmad/tea/4-implementation/bmad-testarch-automate/, _bmad/tea/4-implementation/testarch-automate/, _bmad/tea/workflows/testarch/automate/, or _bmad/bmm/workflows/testarch/automate/
+Workflow location: use the installed automate workflow under _bmad/tea/4-implementation/bmad-testarch-automate/, _bmad/tea/4-implementation/testarch-automate/, _bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/, _bmad/tea/workflows/testarch/automate/, or _bmad/bmm/workflows/testarch/automate/
 Story file: _bmad-output/implementation-artifacts/STORY_PREFIX-*.md
 Generate test automation for the implemented story.
 

@@ -206,6 +206,8 @@ def _build_cmd(args: list[str]) -> int:
     auto_paths = testarch_automate_workflow_paths(root)
     review_paths = review_workflow_paths(root)
     retro_paths = retrospective_workflow_paths(root)
+    auto_label = _automate_workflow_label(auto_paths.workflow)
+    auto_command = _automate_command(auto_paths.workflow, story_id)
     ai_command = os.environ.get("AI_COMMAND")
     if ai_command and not os.environ.get("AI_AGENT"):
         cli = ai_command
@@ -216,7 +218,7 @@ def _build_cmd(args: list[str]) -> int:
     workflow = {
         "create": f"/bmad-bmm-create-story {story_id} #YOLO",
         "dev": f"/bmad-bmm-dev-story {story_id} #YOLO",
-        "auto": f"/bmad-tea-testarch-automate {story_id} auto-apply all discovered gaps in tests",
+        "auto": auto_command,
         "review": f"/bmad-bmm-story-automator-review {story_id} {extra or 'auto-fix all issues without prompting'}",
         "retro": f"/bmad-bmm-retrospective {story_id} #YOLO",
     }
@@ -241,6 +243,8 @@ def _build_cmd(args: list[str]) -> int:
         dev_extra += f"Validate with: {dev_paths.checklist}\n"
 
     auto_extra = ""
+    if auto_paths.skill:
+        auto_extra += f"READ this skill first: {auto_paths.skill}\n"
     if auto_paths.instructions:
         auto_extra += f"Then read: {auto_paths.instructions}\n"
     if auto_paths.checklist:
@@ -283,7 +287,7 @@ def _build_cmd(args: list[str]) -> int:
         ),
         "auto": (
             (
-                f"Execute the BMAD testarch-automate workflow for story {story_id}.\n\n"
+                f"Execute the BMAD {auto_label} workflow for story {story_id}.\n\n"
                 f"READ this workflow file first: {auto_paths.workflow}\n"
             )
             + auto_extra
@@ -329,6 +333,16 @@ def agent_cli(agent: str) -> str:
 
 def skill_prefix(agent: str) -> str:
     return "none" if agent == "codex" else "/bmad-bmm-"
+
+
+def _automate_workflow_label(workflow_path: str) -> str:
+    return "qa-generate-e2e-tests" if "qa-generate-e2e-tests" in workflow_path else "testarch-automate"
+
+
+def _automate_command(workflow_path: str, story_id: str) -> str:
+    if "qa-generate-e2e-tests" in workflow_path:
+        return f"/bmad-bmm-qa-generate-e2e-tests {story_id} auto-apply all discovered gaps in tests"
+    return f"/bmad-tea-testarch-automate {story_id} auto-apply all discovered gaps in tests"
 
 
 def generate_session_name(step: str, epic: str, story_id: str, cycle: str = "") -> str:

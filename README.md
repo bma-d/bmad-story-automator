@@ -63,7 +63,9 @@ It also:
 - installs the Claude command `bmad-bmm-story-automator`
 - removes the older `bmad-bmm-story-automator-py` command if present
 - creates missing Claude dependency commands for `create-story`, `dev-story`, `story-automator-review`, `retrospective` without overwriting existing project-specific wrappers
-- creates `bmad-tea-testarch-automate` only if a compatible automate workflow already exists in the target project
+- creates automate wrappers only if a compatible automate workflow already exists in the target project:
+  - `bmad-tea-testarch-automate` for legacy TEA `testarch-automate`
+  - `bmad-bmm-qa-generate-e2e-tests` plus the legacy compatibility alias when the fresh BMAD `qa-generate-e2e-tests` workflow is present
 
 ## Requirements
 
@@ -73,7 +75,7 @@ Host requirements:
 - Claude Code
 - macOS or Linux
 
-If the automate workflow is missing, install still succeeds. In that case run `story-automator` with `Skip Automate = true`.
+If the automate workflow is missing, install still succeeds. In that case run `story-automator` with `Skip Automate = true`. Compatible automate sources: legacy TEA `testarch-automate` or fresh BMAD `qa-generate-e2e-tests`.
 
 ## Package Layout
 

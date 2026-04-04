@@ -219,6 +219,7 @@ RETROSPECTIVE_PATH="$(resolve_workflow_path \
   || err "Required workflow missing: retrospective"
 
 OPTIONAL_AUTOMATE_PATH=""
+AUTOMATE_VARIANT=""
 if OPTIONAL_AUTOMATE_PATH="$(resolve_workflow_path \
   "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md" \
   "_bmad/tea/4-implementation/testarch-automate/workflow.md" \
@@ -228,13 +229,28 @@ if OPTIONAL_AUTOMATE_PATH="$(resolve_workflow_path \
   "_bmad/bmm/4-implementation/testarch-automate/workflow.md" \
   "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.yaml" \
   "_bmad/bmm/4-implementation/testarch-automate/workflow.yaml" \
+  "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md" \
+  "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.md" \
+  "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml" \
+  "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.yaml" \
   "_bmad/tea/workflows/testarch/automate/workflow.yaml" \
   "_bmad/tea/workflows/testarch/automate/workflow.md" \
+  "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.md" \
+  "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.md" \
+  "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml" \
+  "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.yaml" \
   "_bmad/bmm/workflows/testarch/automate/workflow.yaml" \
   "_bmad/bmm/workflows/testarch/automate/workflow.md")"; then
-  :
+  case "$OPTIONAL_AUTOMATE_PATH" in
+    *qa-generate-e2e-tests*)
+      AUTOMATE_VARIANT="qa-generate-e2e-tests"
+      ;;
+    *)
+      AUTOMATE_VARIANT="testarch-automate"
+      ;;
+  esac
 else
-  warn "Optional automate workflow not found. Story-automator still installs, but run with 'Skip Automate' enabled unless you install testarch automate."
+  warn "Optional automate workflow not found. Story-automator still installs, but run with 'Skip Automate' enabled unless you install testarch automate or qa-generate-e2e-tests."
 fi
 
 backup_if_exists "$TARGET_WORKFLOW"
@@ -296,10 +312,18 @@ ensure_command_missing \
   "$RETROSPECTIVE_PATH"
 
 if [ -n "$OPTIONAL_AUTOMATE_PATH" ]; then
+  if [ "$AUTOMATE_VARIANT" = "qa-generate-e2e-tests" ]; then
+    ensure_command_missing \
+      "$TARGET_COMMANDS/bmad-bmm-qa-generate-e2e-tests.md" \
+      "qa-generate-e2e-tests" \
+      "Generate API and E2E tests for an implemented story using the built-in BMAD QA workflow" \
+      "$OPTIONAL_AUTOMATE_PATH"
+  fi
+
   ensure_command_missing \
     "$TARGET_COMMANDS/bmad-tea-testarch-automate.md" \
     "testarch-automate" \
-    "Expand test automation coverage after implementation or analyze existing codebase to generate comprehensive test suite" \
+    "Compatibility wrapper for story-automator automate sessions; expands test automation coverage after implementation" \
     "$OPTIONAL_AUTOMATE_PATH"
 fi
 

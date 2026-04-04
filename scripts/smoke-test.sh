@@ -44,6 +44,29 @@ assert_equals() {
   }
 }
 
+assert_string_contains() {
+  local needle="$1"
+  local haystack="$2"
+  case "$haystack" in
+    *"$needle"*) ;;
+    *)
+      echo "Missing content in string: $needle" >&2
+      exit 1
+      ;;
+  esac
+}
+
+assert_string_not_contains() {
+  local needle="$1"
+  local haystack="$2"
+  case "$haystack" in
+    *"$needle"*)
+      echo "Unexpected content in string: $needle" >&2
+      exit 1
+      ;;
+  esac
+}
+
 make_required_workflows() {
   local root="$1"
   local layout="$2"
@@ -91,6 +114,11 @@ make_fixture() {
   if [ "$automate" = "yes" ]; then
     mkdir -p "$root/_bmad/tea/4-implementation/bmad-testarch-automate"
     printf '# automate\n' >"$root/_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md"
+  elif [ "$automate" = "qa" ]; then
+    mkdir -p "$root/_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests"
+    printf -- '---\nname: bmad-qa-generate-e2e-tests\n---\n' >"$root/_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md"
+    printf '# automate\n' >"$root/_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md"
+    printf '# checklist\n' >"$root/_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/checklist.md"
   fi
 }
 
@@ -119,7 +147,10 @@ verify_install() {
   assert_file "$story_dir/README.md"
   assert_file "$review_dir/instructions.xml"
 
-  "$story_dir/bin/story-automator" --help >/dev/null
+  (
+    cd "$root"
+    "$story_dir/bin/story-automator" --help >/dev/null
+  )
 
   assert_file "$root/.claude/commands/bmad-bmm-story-automator.md"
   assert_file "$root/.claude/commands/bmad-bmm-dev-story.md"
@@ -135,14 +166,36 @@ verify_install() {
   if [ "$mode" = "workflow-xml" ]; then
     assert_contains "@{project-root}/_bmad/core/tasks/workflow.xml" "$root/.claude/commands/bmad-bmm-story-automator.md"
   else
-    assert_contains "Always LOAD the FULL @{project-root}/_bmad/bmm/workflows/4-implementation/story-automator/workflow.md" "$root/.claude/commands/bmad-bmm-story-automator.md"
+    if [ "$layout" = "current" ]; then
+      assert_contains "Always LOAD the FULL @{project-root}/_bmad/bmm/4-implementation/bmad-story-automator/workflow.md" "$root/.claude/commands/bmad-bmm-story-automator.md"
+    else
+      assert_contains "Always LOAD the FULL @{project-root}/_bmad/bmm/workflows/4-implementation/story-automator/workflow.md" "$root/.claude/commands/bmad-bmm-story-automator.md"
+    fi
   fi
 
   if [ "$automate" = "yes" ]; then
     assert_file "$root/.claude/commands/bmad-tea-testarch-automate.md"
+    local auto_cmd
+    auto_cmd="$(cd "$root" && "$story_dir/bin/story-automator" tmux-wrapper build-cmd auto 5.3 --agent claude)"
+    assert_string_contains "/bmad-tea-testarch-automate 5.3 auto-apply all discovered gaps in tests" "$auto_cmd"
+  elif [ "$automate" = "qa" ]; then
+    assert_file "$root/.claude/commands/bmad-bmm-qa-generate-e2e-tests.md"
+    assert_file "$root/.claude/commands/bmad-tea-testarch-automate.md"
+    local auto_cmd auto_codex_cmd
+    auto_cmd="$(cd "$root" && "$story_dir/bin/story-automator" tmux-wrapper build-cmd auto 5.3 --agent claude)"
+    auto_codex_cmd="$(cd "$root" && "$story_dir/bin/story-automator" tmux-wrapper build-cmd auto 5.3 --agent codex)"
+    assert_string_contains "/bmad-bmm-qa-generate-e2e-tests 5.3 auto-apply all discovered gaps in tests" "$auto_cmd"
+    assert_string_contains "Execute the BMAD qa-generate-e2e-tests workflow for story 5.3." "$auto_codex_cmd"
+    assert_string_contains "READ this skill first: _bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md" "$auto_codex_cmd"
+    assert_string_contains "READ this workflow file first: _bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md" "$auto_codex_cmd"
+    assert_string_not_contains "_bmad/tea/4-implementation/bmad-testarch-automate/instructions.md" "$auto_codex_cmd"
   else
     [ ! -e "$root/.claude/commands/bmad-tea-testarch-automate.md" ] || {
       echo "Unexpected automate command wrapper" >&2
+      exit 1
+    }
+    [ ! -e "$root/.claude/commands/bmad-bmm-qa-generate-e2e-tests.md" ] || {
+      echo "Unexpected qa automate command wrapper" >&2
       exit 1
     }
   fi
@@ -171,6 +224,7 @@ run_case() {
 }
 
 run_case current current workflow-xml yes
+run_case current-qa current direct qa
 run_case legacy legacy direct no
 
 echo "smoke ok"

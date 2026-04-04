@@ -26,6 +26,14 @@ def _first_existing_relative_path(*candidates: str, project_root: str | None = N
     return ""
 
 
+def _existing_relative_path_or_empty(*candidates: str, project_root: str | None = None) -> str:
+    root = Path(project_root or get_project_root())
+    for rel in candidates:
+        if rel and (root / rel).exists():
+            return rel
+    return ""
+
+
 def create_story_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
         skill=_first_existing_relative_path(
@@ -142,7 +150,14 @@ def review_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
 
 def testarch_automate_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
-        workflow=_first_existing_relative_path(
+        skill=_existing_relative_path_or_empty(
+            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md",
+            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/SKILL.md",
+            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md",
+            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/SKILL.md",
+            project_root=project_root,
+        ),
+        workflow=_existing_relative_path_or_empty(
             "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md",
             "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.yaml",
             "_bmad/tea/4-implementation/testarch-automate/workflow.md",
@@ -151,22 +166,34 @@ def testarch_automate_workflow_paths(project_root: str | None = None) -> Workflo
             "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.yaml",
             "_bmad/bmm/4-implementation/testarch-automate/workflow.md",
             "_bmad/bmm/4-implementation/testarch-automate/workflow.yaml",
+            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md",
+            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml",
+            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.md",
+            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.yaml",
             "_bmad/tea/workflows/testarch/automate/workflow.md",
             "_bmad/tea/workflows/testarch/automate/workflow.yaml",
+            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.md",
+            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml",
+            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.md",
+            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.yaml",
             "_bmad/bmm/workflows/testarch/automate/workflow.md",
             "_bmad/bmm/workflows/testarch/automate/workflow.yaml",
             project_root=project_root,
         ),
-        instructions=_first_existing_relative_path(
+        instructions=_existing_relative_path_or_empty(
             "_bmad/tea/4-implementation/bmad-testarch-automate/instructions.md",
             "_bmad/tea/4-implementation/testarch-automate/instructions.md",
             "_bmad/tea/workflows/testarch/automate/instructions.md",
             "_bmad/bmm/workflows/testarch/automate/instructions.md",
             project_root=project_root,
         ),
-        checklist=_first_existing_relative_path(
+        checklist=_existing_relative_path_or_empty(
             "_bmad/tea/4-implementation/bmad-testarch-automate/checklist.md",
             "_bmad/tea/4-implementation/testarch-automate/checklist.md",
+            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/checklist.md",
+            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/checklist.md",
+            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/checklist.md",
+            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/checklist.md",
             "_bmad/tea/workflows/testarch/automate/checklist.md",
             "_bmad/bmm/workflows/testarch/automate/checklist.md",
             project_root=project_root,

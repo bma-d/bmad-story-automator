@@ -63,7 +63,7 @@ def agent_cli(agent: str) -> str:
 
 
 def skill_prefix(agent: str) -> str:
-    return "none" if agent == "codex" else "/bmad-bmm-"
+    return "none" if agent == "codex" else "bmad-"
 
 
 def tmux_has_session(session: str) -> bool:

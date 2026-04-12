@@ -189,16 +189,6 @@ def _build_cmd(args: list[str]) -> int:
         extra = f"{extra} {tail[idx]}".strip()
         idx += 1
     agent = agent or agent_type()
-    if step == "retro" and agent != "codex":
-        prompt = (
-            f"/bmad-bmm-retrospective {story_id}\n\n"
-            "Run the retrospective in #YOLO mode.\n"
-            "Assume the user will NOT provide any input to the retrospective directly.\n"
-            "Skip all WAIT for user instructions and continue autonomously."
-        )
-        prompt = prompt.replace('"', '\\"').replace("\n", " ")
-        print(f'unset CLAUDECODE && claude --dangerously-skip-permissions "{prompt}"')
-        return 0
     story_prefix = story_id.replace(".", "-")
     root = get_project_root()
     create_paths = create_story_workflow_paths(root)
@@ -207,7 +197,6 @@ def _build_cmd(args: list[str]) -> int:
     review_paths = review_workflow_paths(root)
     retro_paths = retrospective_workflow_paths(root)
     auto_label = _automate_workflow_label(auto_paths.workflow)
-    auto_command = _automate_command(auto_paths.workflow, story_id)
     ai_command = os.environ.get("AI_COMMAND")
     if ai_command and not os.environ.get("AI_AGENT"):
         cli = ai_command
@@ -215,19 +204,9 @@ def _build_cmd(args: list[str]) -> int:
         cli = agent_cli(agent)
     else:
         cli = "codex exec"
-    workflow = {
-        "create": f"/bmad-bmm-create-story {story_id} #YOLO",
-        "dev": f"/bmad-bmm-dev-story {story_id} #YOLO",
-        "auto": auto_command,
-        "review": f"/bmad-bmm-story-automator-review {story_id} {extra or 'auto-fix all issues without prompting'}",
-        "retro": f"/bmad-bmm-retrospective {story_id} #YOLO",
-    }
-    if step not in workflow:
+    if step not in {"create", "dev", "auto", "review", "retro"}:
         print(f"Unknown step type: {step}", file=__import__("sys").stderr)
         return 1
-    if agent != "codex" or ai_command:
-        print(f'unset CLAUDECODE && {cli} "{workflow[step]}"')
-        return 0
     create_extra = ""
     if create_paths.instructions:
         create_extra += f"Then read: {create_paths.instructions}\n"
@@ -245,6 +224,8 @@ def _build_cmd(args: list[str]) -> int:
     auto_extra = ""
     if auto_paths.skill:
         auto_extra += f"READ this skill first: {auto_paths.skill}\n"
+    if auto_paths.workflow:
+        auto_extra += f"READ this workflow file next: {auto_paths.workflow}\n"
     if auto_paths.instructions:
         auto_extra += f"Then read: {auto_paths.instructions}\n"
     if auto_paths.checklist:
@@ -288,7 +269,6 @@ def _build_cmd(args: list[str]) -> int:
         "auto": (
             (
                 f"Execute the BMAD {auto_label} workflow for story {story_id}.\n\n"
-                f"READ this workflow file first: {auto_paths.workflow}\n"
             )
             + auto_extra
             + (
@@ -319,7 +299,10 @@ def _build_cmd(args: list[str]) -> int:
         ),
     }[step]
     escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
-    print(f'codex exec --full-auto "{escaped}"')
+    if agent == "codex" and not ai_command:
+        print(f'codex exec --full-auto "{escaped}"')
+    else:
+        print(f'unset CLAUDECODE && {cli} "{escaped}"')
     return 0
 
 
@@ -332,17 +315,11 @@ def agent_cli(agent: str) -> str:
 
 
 def skill_prefix(agent: str) -> str:
-    return "none" if agent == "codex" else "/bmad-bmm-"
+    return "none" if agent == "codex" else "bmad-"
 
 
 def _automate_workflow_label(workflow_path: str) -> str:
-    return "qa-generate-e2e-tests" if "qa-generate-e2e-tests" in workflow_path else "testarch-automate"
-
-
-def _automate_command(workflow_path: str, story_id: str) -> str:
-    if "qa-generate-e2e-tests" in workflow_path:
-        return f"/bmad-bmm-qa-generate-e2e-tests {story_id} auto-apply all discovered gaps in tests"
-    return f"/bmad-tea-testarch-automate {story_id} auto-apply all discovered gaps in tests"
+    return "qa-generate-e2e-tests" if "qa-generate-e2e-tests" in workflow_path else "qa-generate-e2e-tests"
 
 
 def generate_session_name(step: str, epic: str, story_id: str, cycle: str = "") -> str:

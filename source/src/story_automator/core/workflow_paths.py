@@ -34,87 +34,47 @@ def _existing_relative_path_or_empty(*candidates: str, project_root: str | None 
     return ""
 
 
+def _skill_file(skill_name: str) -> str:
+    return f".claude/skills/{skill_name}/SKILL.md"
+
+
+def _workflow_file(skill_name: str, *names: str, project_root: str | None = None) -> str:
+    return _first_existing_relative_path(
+        *(f".claude/skills/{skill_name}/{name}" for name in names),
+        project_root=project_root,
+    )
+
+
+def _optional_file(skill_name: str, *names: str, project_root: str | None = None) -> str:
+    return _existing_relative_path_or_empty(
+        *(f".claude/skills/{skill_name}/{name}" for name in names),
+        project_root=project_root,
+    )
+
+
 def create_story_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
-        skill=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-create-story/SKILL.md",
-            "_bmad/bmm/4-implementation/create-story/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/create-story/SKILL.md",
-            project_root=project_root,
-        ),
-        workflow=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-create-story/workflow.md",
-            "_bmad/bmm/4-implementation/create-story/workflow.md",
-            "_bmad/bmm/4-implementation/bmad-create-story/workflow.yaml",
-            "_bmad/bmm/4-implementation/create-story/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/create-story/workflow.md",
-            "_bmad/bmm/workflows/4-implementation/create-story/workflow.yaml",
-            project_root=project_root,
-        ),
-        instructions=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-create-story/discover-inputs.md",
-            "_bmad/bmm/workflows/4-implementation/create-story/discover-inputs.md",
-            project_root=project_root,
-        ),
-        checklist=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-create-story/checklist.md",
-            "_bmad/bmm/4-implementation/create-story/checklist.md",
-            "_bmad/bmm/workflows/4-implementation/create-story/checklist.md",
-            project_root=project_root,
-        ),
-        template=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-create-story/template.md",
-            "_bmad/bmm/4-implementation/create-story/template.md",
-            "_bmad/bmm/workflows/4-implementation/create-story/template.md",
-            project_root=project_root,
-        ),
+        skill=_first_existing_relative_path(_skill_file("bmad-create-story"), project_root=project_root),
+        workflow=_workflow_file("bmad-create-story", "workflow.md", "workflow.yaml", project_root=project_root),
+        instructions=_optional_file("bmad-create-story", "discover-inputs.md", project_root=project_root),
+        checklist=_optional_file("bmad-create-story", "checklist.md", project_root=project_root),
+        template=_optional_file("bmad-create-story", "template.md", project_root=project_root),
     )
 
 
 def dev_story_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
-        skill=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-dev-story/SKILL.md",
-            "_bmad/bmm/4-implementation/dev-story/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/dev-story/SKILL.md",
-            project_root=project_root,
-        ),
-        workflow=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-dev-story/workflow.md",
-            "_bmad/bmm/4-implementation/dev-story/workflow.md",
-            "_bmad/bmm/4-implementation/bmad-dev-story/workflow.yaml",
-            "_bmad/bmm/4-implementation/dev-story/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/dev-story/workflow.md",
-            "_bmad/bmm/workflows/4-implementation/dev-story/workflow.yaml",
-            project_root=project_root,
-        ),
+        skill=_first_existing_relative_path(_skill_file("bmad-dev-story"), project_root=project_root),
+        workflow=_workflow_file("bmad-dev-story", "workflow.md", "workflow.yaml", project_root=project_root),
         instructions="",
-        checklist=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-dev-story/checklist.md",
-            "_bmad/bmm/4-implementation/dev-story/checklist.md",
-            "_bmad/bmm/workflows/4-implementation/dev-story/checklist.md",
-            project_root=project_root,
-        ),
+        checklist=_optional_file("bmad-dev-story", "checklist.md", project_root=project_root),
     )
 
 
 def retrospective_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
-        skill=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-retrospective/SKILL.md",
-            "_bmad/bmm/4-implementation/retrospective/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/retrospective/SKILL.md",
-            project_root=project_root,
-        ),
-        workflow=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-retrospective/workflow.md",
-            "_bmad/bmm/4-implementation/retrospective/workflow.md",
-            "_bmad/bmm/4-implementation/bmad-retrospective/workflow.yaml",
-            "_bmad/bmm/4-implementation/retrospective/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/retrospective/workflow.md",
-            "_bmad/bmm/workflows/4-implementation/retrospective/workflow.yaml",
-            project_root=project_root,
-        ),
+        skill=_first_existing_relative_path(_skill_file("bmad-retrospective"), project_root=project_root),
+        workflow=_workflow_file("bmad-retrospective", "workflow.md", "workflow.yaml", project_root=project_root),
         instructions="",
     )
 
@@ -122,27 +82,23 @@ def retrospective_workflow_paths(project_root: str | None = None) -> WorkflowPat
 def review_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
         skill=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-story-automator-review/SKILL.md",
-            "_bmad/bmm/4-implementation/story-automator-review/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/story-automator-review/SKILL.md",
+            _skill_file("bmad-story-automator-review"),
             project_root=project_root,
         ),
-        workflow=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-story-automator-review/workflow.yaml",
-            "_bmad/bmm/4-implementation/story-automator-review/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/story-automator-review/workflow.yaml",
+        workflow=_workflow_file(
+            "bmad-story-automator-review",
+            "workflow.yaml",
+            "workflow.md",
             project_root=project_root,
         ),
-        instructions=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-story-automator-review/instructions.xml",
-            "_bmad/bmm/4-implementation/story-automator-review/instructions.xml",
-            "_bmad/bmm/workflows/4-implementation/story-automator-review/instructions.xml",
+        instructions=_optional_file(
+            "bmad-story-automator-review",
+            "instructions.xml",
             project_root=project_root,
         ),
-        checklist=_first_existing_relative_path(
-            "_bmad/bmm/4-implementation/bmad-story-automator-review/checklist.md",
-            "_bmad/bmm/4-implementation/story-automator-review/checklist.md",
-            "_bmad/bmm/workflows/4-implementation/story-automator-review/checklist.md",
+        checklist=_optional_file(
+            "bmad-story-automator-review",
+            "checklist.md",
             project_root=project_root,
         ),
     )
@@ -151,51 +107,19 @@ def review_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
 def testarch_automate_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
         skill=_existing_relative_path_or_empty(
-            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md",
-            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/SKILL.md",
-            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/SKILL.md",
+            _skill_file("bmad-qa-generate-e2e-tests"),
             project_root=project_root,
         ),
-        workflow=_existing_relative_path_or_empty(
-            "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md",
-            "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.yaml",
-            "_bmad/tea/4-implementation/testarch-automate/workflow.md",
-            "_bmad/tea/4-implementation/testarch-automate/workflow.yaml",
-            "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.md",
-            "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.yaml",
-            "_bmad/bmm/4-implementation/testarch-automate/workflow.md",
-            "_bmad/bmm/4-implementation/testarch-automate/workflow.yaml",
-            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md",
-            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml",
-            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.md",
-            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.yaml",
-            "_bmad/tea/workflows/testarch/automate/workflow.md",
-            "_bmad/tea/workflows/testarch/automate/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.md",
-            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml",
-            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.md",
-            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.yaml",
-            "_bmad/bmm/workflows/testarch/automate/workflow.md",
-            "_bmad/bmm/workflows/testarch/automate/workflow.yaml",
+        workflow=_optional_file(
+            "bmad-qa-generate-e2e-tests",
+            "workflow.md",
+            "workflow.yaml",
             project_root=project_root,
         ),
-        instructions=_existing_relative_path_or_empty(
-            "_bmad/tea/4-implementation/bmad-testarch-automate/instructions.md",
-            "_bmad/tea/4-implementation/testarch-automate/instructions.md",
-            "_bmad/tea/workflows/testarch/automate/instructions.md",
-            "_bmad/bmm/workflows/testarch/automate/instructions.md",
-            project_root=project_root,
-        ),
-        checklist=_existing_relative_path_or_empty(
-            "_bmad/tea/4-implementation/bmad-testarch-automate/checklist.md",
-            "_bmad/tea/4-implementation/testarch-automate/checklist.md",
-            "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/checklist.md",
-            "_bmad/bmm/4-implementation/qa-generate-e2e-tests/checklist.md",
-            "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/checklist.md",
-            "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/checklist.md",
-            "_bmad/tea/workflows/testarch/automate/checklist.md",
-            "_bmad/bmm/workflows/testarch/automate/checklist.md",
+        instructions="",
+        checklist=_optional_file(
+            "bmad-qa-generate-e2e-tests",
+            "checklist.md",
             project_root=project_root,
         ),
     )

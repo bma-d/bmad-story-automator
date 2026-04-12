@@ -36,7 +36,7 @@ def _stop_hook_command(command: str) -> str:
     if not command_parts:
         return command
     candidates = [
-        _workflow_root() / "bin" / "story-automator",
+        _workflow_root() / "scripts" / "story-automator",
         Path(shutil.which("story-automator")) if shutil.which("story-automator") else None,
         Path(sys.argv[0]).resolve() if Path(sys.argv[0]).exists() and os.access(Path(sys.argv[0]), os.X_OK) else None,
     ]

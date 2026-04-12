@@ -8,7 +8,8 @@ This repository packages the BMAD story-automator workflow payload plus the Pyth
 
 - keep changes scoped; avoid unrelated cleanup
 - keep files under roughly 500 LOC when practical
-- preserve current and legacy BMAD layout support
+- preserve pure skill install behavior under `.claude/skills`
+- treat old `_bmad/bmm` story-automator install paths as migration-only backups
 - avoid adding dependencies unless clearly justified
 - run:
   - `npm run pack:dry-run`
@@ -20,7 +21,7 @@ This repository packages the BMAD story-automator workflow payload plus the Pyth
 - use Conventional Commits
 - describe user-facing behavior changes
 - mention install-path or workflow-path changes explicitly
-- call out any payload files copied from upstream BMAD sources
+- call out any payload or runtime files copied from upstream BMAD sources
 
 ## Reporting Bugs
 
@@ -28,6 +29,6 @@ Include:
 - OS
 - Python version
 - Node version
-- BMAD layout: current or legacy
+- BMAD skill layout under `.claude/skills`
 - exact command run
 - exact error output

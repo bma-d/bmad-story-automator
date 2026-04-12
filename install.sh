@@ -9,11 +9,11 @@ usage() {
 Usage: ./install.sh <bmad-project-root>
 
 Installs the portable payload bundle into:
-  _bmad/bmm/workflows/4-implementation/story-automator
-  _bmad/bmm/workflows/4-implementation/story-automator-review
+  .claude/skills/bmad-story-automator
+  .claude/skills/bmad-story-automator-review
 
-Also ensures Claude command wrappers exist in:
-  .claude/commands
+The Python helper runtime is installed inside:
+  .claude/skills/bmad-story-automator/scripts/story-automator
 EOF
 }
 
@@ -32,78 +32,48 @@ resolve_abs_dir() {
   cd "$input" >/dev/null 2>&1 && pwd
 }
 
-detect_impl_layout() {
-  if [ -d "$TARGET_ROOT/_bmad/bmm/4-implementation" ]; then
-    IMPL_ROOT="$TARGET_ROOT/_bmad/bmm/4-implementation"
-    IMPL_ROOT_REL="_bmad/bmm/4-implementation"
-    IMPL_LAYOUT="current"
-    STORY_DIR_NAME="bmad-story-automator"
-    STORY_REVIEW_DIR_NAME="bmad-story-automator-review"
-    return 0
-  fi
-
-  if [ -d "$TARGET_ROOT/_bmad/bmm/workflows/4-implementation" ]; then
-    IMPL_ROOT="$TARGET_ROOT/_bmad/bmm/workflows/4-implementation"
-    IMPL_ROOT_REL="_bmad/bmm/workflows/4-implementation"
-    IMPL_LAYOUT="legacy"
-    STORY_DIR_NAME="story-automator"
-    STORY_REVIEW_DIR_NAME="story-automator-review"
-    return 0
-  fi
-
-  err "Missing implementation workflows directory"
-}
-
 backup_if_exists() {
   local path="$1"
   if [ -e "$path" ]; then
     local backup="${path}.backup-$(date -u +%Y%m%dT%H%M%SZ)"
     mv "$path" "$backup"
-    echo "Backup: $backup"
+    echo "Backup: ${backup#$TARGET_ROOT/}"
   fi
 }
 
-write_claude_command() {
-  local file="$1"
-  local name="$2"
-  local description="$3"
-  local workflow_path="$4"
+backup_legacy_story_automator_installs() {
+  local legacy_path
+  local legacy_paths=(
+    "$TARGET_ROOT/_bmad/bmm/4-implementation/bmad-story-automator"
+    "$TARGET_ROOT/_bmad/bmm/4-implementation/story-automator"
+    "$TARGET_ROOT/_bmad/bmm/4-implementation/story-automator-py"
+    "$TARGET_ROOT/_bmad/bmm/4-implementation/bmad-story-automator-review"
+    "$TARGET_ROOT/_bmad/bmm/4-implementation/story-automator-review"
+    "$TARGET_ROOT/_bmad/bmm/workflows/4-implementation/bmad-story-automator"
+    "$TARGET_ROOT/_bmad/bmm/workflows/4-implementation/story-automator"
+    "$TARGET_ROOT/_bmad/bmm/workflows/4-implementation/bmad-story-automator-review"
+    "$TARGET_ROOT/_bmad/bmm/workflows/4-implementation/story-automator-review"
+  )
 
-  if [ "$COMMAND_MODE" = "workflow-xml" ]; then
-    cat >"$file" <<EOF
----
-name: '${name}'
-description: '${description}'
----
+  for legacy_path in "${legacy_paths[@]}"; do
+    backup_if_exists "$legacy_path"
+  done
+}
 
-IT IS CRITICAL THAT YOU FOLLOW THESE STEPS - while staying in character as the current agent persona you may have loaded:
+cleanup_obsolete_command_shims() {
+  local command_dir="$TARGET_ROOT/.claude/commands"
+  local shim
 
-<steps CRITICAL="TRUE">
-1. Always LOAD the FULL @{project-root}/_bmad/core/tasks/workflow.xml
-2. READ its entire contents - this is the CORE OS for EXECUTING the specific workflow-config @{project-root}/${workflow_path}
-3. Pass the workflow path @{project-root}/${workflow_path} as 'workflow-config' parameter to the workflow.xml instructions
-4. Follow workflow.xml instructions EXACTLY as written to process and follow the specific workflow config and its instructions
-5. Save outputs after EACH section when generating any documents from templates
-</steps>
-EOF
-    return
-  fi
+  rm -f "$command_dir/bmad-bmm-story-automator-py.md"
 
-  cat >"$file" <<EOF
----
-name: '${name}'
-description: '${description}'
----
-
-IT IS CRITICAL THAT YOU FOLLOW THESE STEPS - while staying in character as the current agent persona you may have loaded:
-
-<steps CRITICAL="TRUE">
-1. Always LOAD the FULL @{project-root}/${workflow_path}
-2. READ its entire contents - this is the COMPLETE workflow you must execute
-3. Follow the workflow EXACTLY as written
-4. Save outputs after EACH section when generating any documents from templates
-</steps>
-EOF
+  for shim in \
+    "$command_dir/bmad-bmm-story-automator.md" \
+    "$command_dir/bmad-bmm-story-automator-review.md"; do
+    if [ -f "$shim" ] && grep -Eq "_bmad/bmm/(4-implementation|workflows/4-implementation)/(bmad-)?story-automator" "$shim"; then
+      rm -f "$shim"
+      echo "Removed obsolete command shim: ${shim#$TARGET_ROOT/}"
+    fi
+  done
 }
 
 resolve_workflow_path() {
@@ -117,51 +87,6 @@ resolve_workflow_path() {
   return 1
 }
 
-ensure_command_current() {
-  local file="$1"
-  local name="$2"
-  local description="$3"
-  local workflow_path="$4"
-  local tmp
-
-  tmp="$(mktemp "${TMPDIR:-/tmp}/story-automator-command.XXXXXX")"
-  write_claude_command "$tmp" "$name" "$description" "$workflow_path"
-
-  if [ ! -f "$file" ]; then
-    mv "$tmp" "$file"
-    chmod 0644 "$file"
-    echo "Created command: ${file#$TARGET_ROOT/}"
-    return 0
-  fi
-
-  if cmp -s "$tmp" "$file"; then
-    rm -f "$tmp"
-    return 0
-  fi
-
-  mv "$tmp" "$file"
-  chmod 0644 "$file"
-  echo "Updated command: ${file#$TARGET_ROOT/}"
-}
-
-ensure_command_missing() {
-  local file="$1"
-  local name="$2"
-  local description="$3"
-  local workflow_path="$4"
-  local tmp
-
-  if [ -f "$file" ]; then
-    return 0
-  fi
-
-  tmp="$(mktemp "${TMPDIR:-/tmp}/story-automator-command.XXXXXX")"
-  write_claude_command "$tmp" "$name" "$description" "$workflow_path"
-  mv "$tmp" "$file"
-  chmod 0644 "$file"
-  echo "Created command: ${file#$TARGET_ROOT/}"
-}
-
 if [ $# -ne 1 ]; then
   usage
   exit 1
@@ -169,166 +94,74 @@ fi
 
 TARGET_ROOT="$(resolve_abs_dir "$1")"
 TARGET_BMAD="$TARGET_ROOT/_bmad"
-TARGET_COMMANDS="$TARGET_ROOT/.claude/commands"
+TARGET_SKILLS="$TARGET_ROOT/.claude/skills"
+TARGET_STORY="$TARGET_SKILLS/bmad-story-automator"
+TARGET_STORY_REVIEW="$TARGET_SKILLS/bmad-story-automator-review"
 PAYLOAD_ROOT="$SCRIPT_DIR/payload"
+STORY_PAYLOAD="$PAYLOAD_ROOT/.claude/skills/bmad-story-automator"
+STORY_REVIEW_PAYLOAD="$PAYLOAD_ROOT/.claude/skills/bmad-story-automator-review"
 SOURCE_ROOT="$SCRIPT_DIR/source"
-STORY_PAYLOAD="$PAYLOAD_ROOT/_bmad/bmm/workflows/4-implementation/story-automator"
-STORY_REVIEW_PAYLOAD="$PAYLOAD_ROOT/_bmad/bmm/workflows/4-implementation/story-automator-review"
-SOURCE_WRAPPER="$SOURCE_ROOT/bin/story-automator"
+SOURCE_WRAPPER="$SOURCE_ROOT/scripts/story-automator"
 SOURCE_PACKAGE_DIR="$SOURCE_ROOT/src/story_automator"
 SOURCE_PYPROJECT="$SOURCE_ROOT/pyproject.toml"
+SOURCE_README="$SOURCE_ROOT/README.md"
+SOURCE_LICENSE="$SOURCE_ROOT/LICENSE"
 
 [ -d "$TARGET_BMAD" ] || err "Target is not a BMAD project: missing $TARGET_BMAD"
-detect_impl_layout
-TARGET_WORKFLOW="$IMPL_ROOT/$STORY_DIR_NAME"
-TARGET_STORY_REVIEW="$IMPL_ROOT/$STORY_REVIEW_DIR_NAME"
 [ -d "$STORY_PAYLOAD" ] || err "Missing story-automator payload: $STORY_PAYLOAD"
 [ -d "$STORY_REVIEW_PAYLOAD" ] || err "Missing story-automator-review payload: $STORY_REVIEW_PAYLOAD"
 [ -f "$SOURCE_WRAPPER" ] || err "Missing runtime wrapper: $SOURCE_WRAPPER"
 [ -d "$SOURCE_PACKAGE_DIR" ] || err "Missing runtime package dir: $SOURCE_PACKAGE_DIR"
 [ -f "$SOURCE_PYPROJECT" ] || err "Missing runtime pyproject: $SOURCE_PYPROJECT"
-
-COMMAND_MODE="direct"
-if [ -f "$TARGET_ROOT/_bmad/core/tasks/workflow.xml" ]; then
-  COMMAND_MODE="workflow-xml"
-fi
+[ -f "$SOURCE_README" ] || err "Missing runtime README: $SOURCE_README"
+[ -f "$SOURCE_LICENSE" ] || err "Missing runtime license: $SOURCE_LICENSE"
 
 CREATE_STORY_PATH="$(resolve_workflow_path \
-  "_bmad/bmm/4-implementation/bmad-create-story/workflow.md" \
-  "_bmad/bmm/4-implementation/create-story/workflow.md" \
-  "_bmad/bmm/4-implementation/bmad-create-story/workflow.yaml" \
-  "_bmad/bmm/4-implementation/create-story/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/create-story/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/create-story/workflow.md")" \
-  || err "Required workflow missing: create-story"
+  ".claude/skills/bmad-create-story/workflow.md" \
+  ".claude/skills/bmad-create-story/workflow.yaml")" \
+  || err "Required skill workflow missing: .claude/skills/bmad-create-story/workflow.md"
 DEV_STORY_PATH="$(resolve_workflow_path \
-  "_bmad/bmm/4-implementation/bmad-dev-story/workflow.md" \
-  "_bmad/bmm/4-implementation/dev-story/workflow.md" \
-  "_bmad/bmm/4-implementation/bmad-dev-story/workflow.yaml" \
-  "_bmad/bmm/4-implementation/dev-story/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/dev-story/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/dev-story/workflow.md")" \
-  || err "Required workflow missing: dev-story"
+  ".claude/skills/bmad-dev-story/workflow.md" \
+  ".claude/skills/bmad-dev-story/workflow.yaml")" \
+  || err "Required skill workflow missing: .claude/skills/bmad-dev-story/workflow.md"
 RETROSPECTIVE_PATH="$(resolve_workflow_path \
-  "_bmad/bmm/4-implementation/bmad-retrospective/workflow.md" \
-  "_bmad/bmm/4-implementation/retrospective/workflow.md" \
-  "_bmad/bmm/4-implementation/bmad-retrospective/workflow.yaml" \
-  "_bmad/bmm/4-implementation/retrospective/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/retrospective/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/retrospective/workflow.md")" \
-  || err "Required workflow missing: retrospective"
+  ".claude/skills/bmad-retrospective/workflow.md" \
+  ".claude/skills/bmad-retrospective/workflow.yaml")" \
+  || err "Required skill workflow missing: .claude/skills/bmad-retrospective/workflow.md"
 
 OPTIONAL_AUTOMATE_PATH=""
-AUTOMATE_VARIANT=""
-if OPTIONAL_AUTOMATE_PATH="$(resolve_workflow_path \
-  "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md" \
-  "_bmad/tea/4-implementation/testarch-automate/workflow.md" \
-  "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.yaml" \
-  "_bmad/tea/4-implementation/testarch-automate/workflow.yaml" \
-  "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.md" \
-  "_bmad/bmm/4-implementation/testarch-automate/workflow.md" \
-  "_bmad/bmm/4-implementation/bmad-testarch-automate/workflow.yaml" \
-  "_bmad/bmm/4-implementation/testarch-automate/workflow.yaml" \
-  "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.md" \
-  "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.md" \
-  "_bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml" \
-  "_bmad/bmm/4-implementation/qa-generate-e2e-tests/workflow.yaml" \
-  "_bmad/tea/workflows/testarch/automate/workflow.yaml" \
-  "_bmad/tea/workflows/testarch/automate/workflow.md" \
-  "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.md" \
-  "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.md" \
-  "_bmad/bmm/workflows/4-implementation/bmad-qa-generate-e2e-tests/workflow.yaml" \
-  "_bmad/bmm/workflows/4-implementation/qa-generate-e2e-tests/workflow.yaml" \
-  "_bmad/bmm/workflows/testarch/automate/workflow.yaml" \
-  "_bmad/bmm/workflows/testarch/automate/workflow.md")"; then
-  case "$OPTIONAL_AUTOMATE_PATH" in
-    *qa-generate-e2e-tests*)
-      AUTOMATE_VARIANT="qa-generate-e2e-tests"
-      ;;
-    *)
-      AUTOMATE_VARIANT="testarch-automate"
-      ;;
-  esac
-else
-  warn "Optional automate workflow not found. Story-automator still installs, but run with 'Skip Automate' enabled unless you install testarch automate or qa-generate-e2e-tests."
+if ! OPTIONAL_AUTOMATE_PATH="$(resolve_workflow_path \
+  ".claude/skills/bmad-qa-generate-e2e-tests/workflow.md" \
+  ".claude/skills/bmad-qa-generate-e2e-tests/workflow.yaml")"; then
+  warn "Optional skill workflow not found: .claude/skills/bmad-qa-generate-e2e-tests. Story-automator still installs, but run with 'Skip Automate' enabled unless you install that skill."
 fi
 
-backup_if_exists "$TARGET_WORKFLOW"
+backup_if_exists "$TARGET_STORY"
 backup_if_exists "$TARGET_STORY_REVIEW"
+backup_legacy_story_automator_installs
 
-if [ "$IMPL_LAYOUT" = "current" ]; then
-  LEGACY_CURRENT_STORY="$IMPL_ROOT/story-automator-py"
-  LEGACY_CURRENT_REVIEW="$IMPL_ROOT/story-automator-review"
-  if [ "$LEGACY_CURRENT_STORY" != "$TARGET_WORKFLOW" ]; then
-    backup_if_exists "$LEGACY_CURRENT_STORY"
-  fi
-  if [ "$LEGACY_CURRENT_REVIEW" != "$TARGET_STORY_REVIEW" ]; then
-    backup_if_exists "$LEGACY_CURRENT_REVIEW"
-  fi
-fi
-
-mkdir -p "$TARGET_WORKFLOW" "$TARGET_STORY_REVIEW"
-cp -a "$STORY_PAYLOAD"/. "$TARGET_WORKFLOW"/
+mkdir -p "$TARGET_STORY" "$TARGET_STORY_REVIEW"
+cp -a "$STORY_PAYLOAD"/. "$TARGET_STORY"/
 cp -a "$STORY_REVIEW_PAYLOAD"/. "$TARGET_STORY_REVIEW"/
-cp -a "$SOURCE_PYPROJECT" "$TARGET_WORKFLOW/pyproject.toml"
-mkdir -p "$TARGET_WORKFLOW/bin" "$TARGET_WORKFLOW/src"
-cp -a "$SOURCE_ROOT/bin"/. "$TARGET_WORKFLOW/bin"/
-cp -a "$SOURCE_ROOT/src"/. "$TARGET_WORKFLOW/src"/
-cp -a "$SCRIPT_DIR/README.md" "$TARGET_WORKFLOW/README.md"
 
-chmod +x "$TARGET_WORKFLOW/bin/story-automator"
+cp -a "$SOURCE_PYPROJECT" "$TARGET_STORY/pyproject.toml"
+cp -a "$SOURCE_README" "$TARGET_STORY/README.md"
+cp -a "$SOURCE_LICENSE" "$TARGET_STORY/LICENSE"
+mkdir -p "$TARGET_STORY/scripts" "$TARGET_STORY/src"
+cp -a "$SOURCE_ROOT/scripts"/. "$TARGET_STORY/scripts"/
+cp -a "$SOURCE_ROOT/src"/. "$TARGET_STORY/src"/
+chmod +x "$TARGET_STORY/scripts/story-automator"
 
-mkdir -p "$TARGET_COMMANDS"
-rm -f "$TARGET_COMMANDS/bmad-bmm-story-automator-py.md"
+cleanup_obsolete_command_shims
 
-ensure_command_current \
-  "$TARGET_COMMANDS/bmad-bmm-story-automator.md" \
-  "story-automator" \
-  "Automate the build cycle for stories in an epic using T-Mux sessions with full resumability, smart parallelism, decision escalation, and automated retrospectives (tri-modal: create, validate, edit)" \
-  "$IMPL_ROOT_REL/$STORY_DIR_NAME/workflow.md"
-
-ensure_command_missing \
-  "$TARGET_COMMANDS/bmad-bmm-create-story.md" \
-  "create-story" \
-  "Create the next user story from epics+stories with enhanced context analysis and direct ready-for-dev marking" \
-  "$CREATE_STORY_PATH"
-
-ensure_command_missing \
-  "$TARGET_COMMANDS/bmad-bmm-dev-story.md" \
-  "dev-story" \
-  "Execute a story by implementing tasks/subtasks, writing tests, validating, and updating the story file per acceptance criteria" \
-  "$DEV_STORY_PATH"
-
-ensure_command_missing \
-  "$TARGET_COMMANDS/bmad-bmm-story-automator-review.md" \
-  "story-automator-review" \
-  "Run the dedicated non-interactive review workflow used by story-automator sessions." \
-  "$IMPL_ROOT_REL/$STORY_REVIEW_DIR_NAME/workflow.yaml"
-
-ensure_command_missing \
-  "$TARGET_COMMANDS/bmad-bmm-retrospective.md" \
-  "retrospective" \
-  "Run after epic completion to review overall success and capture lessons learned." \
-  "$RETROSPECTIVE_PATH"
-
+echo "Installed story-automator skill into: $TARGET_STORY"
+echo "Installed story-automator-review skill into: $TARGET_STORY_REVIEW"
+echo "Runtime helper: $TARGET_STORY/scripts/story-automator"
+echo "Verified dependency skill workflows:"
+echo "  create-story: $CREATE_STORY_PATH"
+echo "  dev-story: $DEV_STORY_PATH"
+echo "  retrospective: $RETROSPECTIVE_PATH"
 if [ -n "$OPTIONAL_AUTOMATE_PATH" ]; then
-  if [ "$AUTOMATE_VARIANT" = "qa-generate-e2e-tests" ]; then
-    ensure_command_missing \
-      "$TARGET_COMMANDS/bmad-bmm-qa-generate-e2e-tests.md" \
-      "qa-generate-e2e-tests" \
-      "Generate API and E2E tests for an implemented story using the built-in BMAD QA workflow" \
-      "$OPTIONAL_AUTOMATE_PATH"
-  fi
-
-  ensure_command_missing \
-    "$TARGET_COMMANDS/bmad-tea-testarch-automate.md" \
-    "testarch-automate" \
-    "Compatibility wrapper for story-automator automate sessions; expands test automation coverage after implementation" \
-    "$OPTIONAL_AUTOMATE_PATH"
+  echo "  qa-generate-e2e-tests: $OPTIONAL_AUTOMATE_PATH"
 fi
-
-echo "Installed story-automator into: $TARGET_WORKFLOW"
-echo "Installed bundled story-automator-review into: $TARGET_STORY_REVIEW"
-echo "Implementation layout: $IMPL_LAYOUT"
-echo "Command mode: $COMMAND_MODE"
-echo "Installed Claude command: $TARGET_COMMANDS/bmad-bmm-story-automator.md"
+echo "Claude command wrappers are not generated; invoke the bmad-story-automator skill directly."

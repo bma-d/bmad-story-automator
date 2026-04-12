@@ -1,21 +1,21 @@
 # Command Reference
 
-All operations use the `story-automator` binary. **DO NOT construct tmux commands manually.**
+All operations use the installed helper at `scripts/story-automator` (usually via the `$scripts` variable). **DO NOT construct tmux commands manually.**
 
 ## Core Commands
 
 | Script | Purpose |
 |--------|---------|
-| `story-automator tmux-wrapper` | Session spawning, naming, lifecycle |
-| `story-automator monitor-session` | Batched polling (14+ API calls → 1) |
-| `story-automator tmux-status-check` | Context-efficient status checking (v2.4.0) |
-| `story-automator codex-status-check` | Codex-specific status with heartbeat (v2.4.0) |
-| `story-automator heartbeat-check` | CPU-based process heartbeat detection |
-| `story-automator orchestrator-helper` | Sprint-status, parsing, markers |
-| `story-automator orchestrator-helper agents-build` | Deterministic agents file generation |
-| `story-automator orchestrator-helper agents-resolve` | Agent lookup per story/task via state file or direct agents file |
-| `story-automator validate-story-creation` | Story file count validation |
-| `story-automator commit-story` | Deterministic git commit with JSON output |
+| `$scripts tmux-wrapper` | Session spawning, naming, lifecycle |
+| `$scripts monitor-session` | Batched polling (14+ API calls → 1) |
+| `$scripts tmux-status-check` | Context-efficient status checking (v2.4.0) |
+| `$scripts codex-status-check` | Codex-specific status with heartbeat (v2.4.0) |
+| `$scripts heartbeat-check` | CPU-based process heartbeat detection |
+| `$scripts orchestrator-helper` | Sprint-status, parsing, markers |
+| `$scripts orchestrator-helper agents-build` | Deterministic agents file generation |
+| `$scripts orchestrator-helper agents-resolve` | Agent lookup per story/task via state file or direct agents file |
+| `$scripts validate-story-creation` | Story file count validation |
+| `$scripts commit-story` | Deterministic git commit with JSON output |
 
 ## Usage Pattern
 
@@ -97,4 +97,4 @@ The `build-cmd retro` command automatically includes:
 
 ## Binary Location
 
-The binary lives at `../scripts/story-automator` relative to step files.
+The installed helper lives at `../scripts/story-automator` relative to step files.

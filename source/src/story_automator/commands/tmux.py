@@ -288,15 +288,7 @@ def _build_cmd(args: list[str]) -> int:
             f"Review implementation, find issues, fix them automatically. {extra or 'auto-fix all issues without prompting'}"
             )
         ),
-        "retro": (
-            (
-                f"Execute the BMAD retrospective workflow for epic {story_id}.\n\n"
-                f"READ this skill first: {retro_paths.skill}\n"
-                f"READ this workflow file next: {retro_paths.workflow}\n"
-            )
-            + retro_extra
-            + "Run the retrospective in #YOLO mode and assume the user will NOT provide input."
-        ),
+        "retro": _build_retro_prompt(story_id, retro_paths, retro_extra),
     }[step]
     escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
     if agent == "codex" and not ai_command:
@@ -316,6 +308,46 @@ def agent_cli(agent: str) -> str:
 
 def skill_prefix(agent: str) -> str:
     return "none" if agent == "codex" else "bmad-"
+
+
+def _build_retro_prompt(epic_number: str, retro_paths, retro_extra: str) -> str:
+    return (
+        (
+            f"Execute the BMAD retrospective workflow for epic {epic_number}.\n\n"
+            f"READ this skill first: {retro_paths.skill}\n"
+            f"READ this workflow file next: {retro_paths.workflow}\n"
+        )
+        + retro_extra
+        + (
+            "Run the retrospective in #YOLO mode.\n"
+            "Assume the user will NOT provide any input to the retrospective directly.\n"
+            "For ALL prompts that expect user input, make reasonable autonomous decisions based on:\n"
+            "- Sprint status data\n"
+            "- Story files and their dev notes\n"
+            "- Previous retrospective if available\n"
+            "- Architecture and PRD documents\n\n"
+            "Key behaviors:\n"
+            "- When asked to confirm epic number: auto-confirm based on sprint-status\n"
+            "- When asked for observations: synthesize from story analysis\n"
+            "- When asked for decisions: make data-driven choices\n"
+            "- When presented menus: select the most appropriate option based on context\n"
+            '- Skip all "WAIT for user" instructions - continue autonomously\n\n'
+            "After the retrospective has run and created documents, you MUST:\n"
+            "1. Create a list of documentation that may need updates based on implementation learnings\n"
+            "2. For each doc in the list, verify whether updates are actually needed by:\n"
+            "   - Reading the current doc content\n"
+            "   - Comparing against actual implementation code\n"
+            "   - Checking for discrepancies between doc and code\n"
+            "3. Update docs that have verified discrepancies\n"
+            "4. Discard proposed updates where code matches docs\n\n"
+            "Focus on these doc types:\n"
+            "- Architecture decisions that changed during implementation\n"
+            "- API documentation that diverged from specs\n"
+            "- README files with outdated instructions\n"
+            "- Configuration documentation\n\n"
+            "EVERYTHING SHOULD BE AUTOMATED. THIS IS NOT A SESSION WHERE YOU SHOULD BE EXPECTING USER INPUT."
+        )
+    )
 
 
 def _automate_workflow_label(workflow_path: str) -> str:

@@ -52,6 +52,30 @@ def _optional_file(skill_name: str, *names: str, project_root: str | None = None
     )
 
 
+def _paired_optional_workflow_paths(
+    skill_name: str,
+    *,
+    workflow_names: tuple[str, ...],
+    checklist_names: tuple[str, ...] = (),
+    project_root: str | None = None,
+) -> WorkflowPaths:
+    skill = _existing_relative_path_or_empty(_skill_file(skill_name), project_root=project_root)
+    workflow = _existing_relative_path_or_empty(
+        *(f".claude/skills/{skill_name}/{name}" for name in workflow_names),
+        project_root=project_root,
+    )
+    if not skill or not workflow:
+        return WorkflowPaths()
+    return WorkflowPaths(
+        skill=skill,
+        workflow=workflow,
+        checklist=_existing_relative_path_or_empty(
+            *(f".claude/skills/{skill_name}/{name}" for name in checklist_names),
+            project_root=project_root,
+        ),
+    )
+
+
 def create_story_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
     return WorkflowPaths(
         skill=_first_existing_relative_path(_skill_file("bmad-create-story"), project_root=project_root),
@@ -105,21 +129,9 @@ def review_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
 
 
 def testarch_automate_workflow_paths(project_root: str | None = None) -> WorkflowPaths:
-    return WorkflowPaths(
-        skill=_existing_relative_path_or_empty(
-            _skill_file("bmad-qa-generate-e2e-tests"),
-            project_root=project_root,
-        ),
-        workflow=_optional_file(
-            "bmad-qa-generate-e2e-tests",
-            "workflow.md",
-            "workflow.yaml",
-            project_root=project_root,
-        ),
-        instructions="",
-        checklist=_optional_file(
-            "bmad-qa-generate-e2e-tests",
-            "checklist.md",
-            project_root=project_root,
-        ),
+    return _paired_optional_workflow_paths(
+        "bmad-qa-generate-e2e-tests",
+        workflow_names=("workflow.md", "workflow.yaml"),
+        checklist_names=("checklist.md",),
+        project_root=project_root,
     )

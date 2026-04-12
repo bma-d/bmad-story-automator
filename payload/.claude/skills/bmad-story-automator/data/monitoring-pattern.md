@@ -2,12 +2,12 @@
 
 ## Quick Reference
 
-**All monitoring is handled by the story-automator binary. DO NOT manually construct tmux commands.**
+**All monitoring is handled by the installed helper (`$scripts`, usually `scripts/story-automator`). DO NOT manually construct tmux commands.**
 
 ### Binary Location
 
 ```
-bin/
+scripts/
 └── story-automator  # single Python helper (use subcommands below)
 ```
 
@@ -18,16 +18,16 @@ bin/
 | Pattern | Why Forbidden |
 |---------|---------------|
 | `tmux capture-pane` directly | Context bloat, use status script |
-| `while true` loops in LLM context | Session crash, use story-automator monitor-session |
-| Manual session name construction | Error-prone, use story-automator tmux-wrapper |
-| Parsing raw output yourself | Use story-automator orchestrator-helper parse-output |
+| `while true` loops in LLM context | Session crash, use `$scripts monitor-session` |
+| Manual session name construction | Error-prone, use `$scripts tmux-wrapper` |
+| Parsing raw output yourself | Use `$scripts orchestrator-helper parse-output` |
 
 ---
 
 ## Standard Workflow: Spawn + Monitor + Parse
 
 ```bash
-# STEP 1: Spawn session (use story-automator tmux-wrapper)
+# STEP 1: Spawn session (use $scripts tmux-wrapper)
 session_name=$("$scripts" tmux-wrapper spawn create 5 5.3 \
   --command "$("$scripts" tmux-wrapper build-cmd create 5.3)")
 
@@ -53,29 +53,29 @@ next_action=$(echo "$parsed" | jq -r '.next_action')
 
 ## Script Quick Reference
 
-### story-automator tmux-wrapper
+### $scripts tmux-wrapper
 
 ```bash
 # Spawn session
-story-automator tmux-wrapper spawn <step> <epic> <story_id> [--command "..."] [--cycle N]
+"$scripts" tmux-wrapper spawn <step> <epic> <story_id> [--command "..."] [--cycle N]
 
 # Generate session name only
-story-automator tmux-wrapper name <step> <epic> <story_id> [--cycle N]
+"$scripts" tmux-wrapper name <step> <epic> <story_id> [--cycle N]
 
 # Build workflow command
-story-automator tmux-wrapper build-cmd <step> <story_id> [extra_instruction]
+"$scripts" tmux-wrapper build-cmd <step> <story_id> [extra_instruction]
 
 # List/kill sessions
-story-automator tmux-wrapper list [--project-only]
-story-automator tmux-wrapper kill <session_name>
-story-automator tmux-wrapper kill-all [--project-only]
+"$scripts" tmux-wrapper list [--project-only]
+"$scripts" tmux-wrapper kill <session_name>
+"$scripts" tmux-wrapper kill-all [--project-only]
 ```
 
-### story-automator monitor-session
+### $scripts monitor-session
 
 ```bash
 # Monitor until completion (returns when session ends)
-story-automator monitor-session <session_name> [options]
+"$scripts" monitor-session <session_name> [options]
 
 # Options:
 #   --max-polls N     Maximum iterations (default: 30)
@@ -87,42 +87,42 @@ story-automator monitor-session <session_name> [options]
 # {"final_state":"completed|crashed|stuck|timeout|incomplete|not_found","output_file":"/tmp/...","exit_reason":"..."}
 ```
 
-### story-automator orchestrator-helper
+### $scripts orchestrator-helper
 
 ```bash
 # Check sprint status
-story-automator orchestrator-helper sprint-status get <story_key>
+"$scripts" orchestrator-helper sprint-status get <story_key>
 
 # Parse session output with sub-agent (haiku)
-story-automator orchestrator-helper parse-output <file> <step_type>
+"$scripts" orchestrator-helper parse-output <file> <step_type>
 
 # Marker file operations
-story-automator orchestrator-helper marker create --epic E --story S --remaining N
-story-automator orchestrator-helper marker remove
-story-automator orchestrator-helper marker check
+"$scripts" orchestrator-helper marker create --epic E --story S --remaining N
+"$scripts" orchestrator-helper marker remove
+"$scripts" orchestrator-helper marker check
 
 # Escalation checks
-story-automator orchestrator-helper escalate <trigger> <context>
+"$scripts" orchestrator-helper escalate <trigger> <context>
 ```
 
-### story-automator validate-story-creation
+### $scripts validate-story-creation
 
 ```bash
 # Count before session
-before=$(story-automator validate-story-creation count 5.3)
+before=$("$scripts" validate-story-creation count 5.3)
 
 # ... run create-story session ...
 
 # Count after and validate
-after=$(story-automator validate-story-creation count 5.3)
-story-automator validate-story-creation check 5.3 --before $before --after $after
+after=$("$scripts" validate-story-creation count 5.3)
+"$scripts" validate-story-creation check 5.3 --before $before --after $after
 ```
 
 ---
 
 ## Decision Flow
 
-After `story-automator monitor-session` returns:
+After `$scripts monitor-session` returns:
 
 | final_state | Action |
 |-------------|--------|
@@ -158,7 +158,7 @@ folder | ctx(N%) | HH:MM:SS
                    ^^^^^^^^ <- This time updates continuously while Claude runs
 ```
 
-The `story-automator tmux-status-check` script:
+The installed helper's `$scripts tmux-status-check` command:
 1. Parses the statusline time from the tmux pane
 2. Stores it in the session state file
 3. Compares with previous poll's time

@@ -190,10 +190,12 @@ def _build_cmd(args: list[str]) -> int:
     agent = agent or agent_type()
     story_prefix = story_id.replace(".", "-")
     root = get_project_root()
-    if step not in {"create", "dev", "auto", "review", "retro"}:
-        print(f"Unknown step type: {step}", file=__import__("sys").stderr)
+    try:
+        policy = load_runtime_policy(root, state_file=state_file)
+        contract = step_contract(policy, step)
+    except (FileNotFoundError, PolicyError) as exc:
+        print(str(exc), file=__import__("sys").stderr)
         return 1
-    policy = load_runtime_policy(root, state_file=state_file)
     ai_command = os.environ.get("AI_COMMAND")
     if ai_command and not os.environ.get("AI_AGENT"):
         cli = ai_command
@@ -201,7 +203,7 @@ def _build_cmd(args: list[str]) -> int:
         cli = agent_cli(agent)
     else:
         cli = "codex exec"
-    prompt = _render_step_prompt(step_contract(policy, step), story_id, story_prefix, extra)
+    prompt = _render_step_prompt(contract, story_id, story_prefix, extra)
     escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
     if agent == "codex" and not ai_command:
         codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"

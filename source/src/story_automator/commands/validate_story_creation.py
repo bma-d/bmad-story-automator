@@ -12,7 +12,8 @@ def cmd_validate_story_creation(args: list[str]) -> int:
     action = args[0] if args else ""
     rest = args[1:] if args else []
     project_root = os.environ.get("PROJECT_ROOT", os.getcwd())
-    artifacts_dir = Path(project_root) / "_bmad-output" / "implementation-artifacts"
+    default_artifacts_dir = Path(project_root) / "_bmad-output" / "implementation-artifacts"
+    artifacts_dir = default_artifacts_dir
 
     def story_prefix(story_id: str) -> str:
         return story_id.replace(".", "-")
@@ -20,42 +21,83 @@ def cmd_validate_story_creation(args: list[str]) -> int:
     def count_files(story_id: str, folder: Path) -> int:
         return len(list(folder.glob(f"{story_prefix(story_id)}-*.md")))
 
-    def check_usage() -> int:
-        print(
-            "Usage: validate-story-creation check <story_id> [--state-file PATH] [--before N --after N]",
-            file=os.sys.stderr,
-        )
-        return 1
-
     def create_check_payload(story_id: str, state_file: str) -> dict[str, object]:
         contract = resolve_success_contract(project_root, "create", state_file=state_file or None)
-        payload = create_story_artifact(project_root=project_root, story_key=story_id, contract=contract)
-        expected = int(payload.get("expectedMatches", 1) or 1)
-        actual = int(payload.get("actualMatches", 0) or 0)
-        valid = bool(payload.get("verified"))
-        if valid:
-            reason = "Exactly 1 story file created as expected" if expected == 1 else f"Exactly {expected} story files created as expected"
-        elif actual == 0:
-            reason = "No story file created - session may have failed"
-        elif actual > expected:
-            reason = f"RUNAWAY CREATION: {actual} files created instead of {expected}"
-        else:
-            reason = f"Unexpected story artifact count: {actual} files instead of {expected}"
+        return create_story_artifact(project_root=project_root, story_key=story_id, contract=contract)
+
+    def expected_matches(payload: dict[str, object] | None) -> int:
+        if payload is None:
+            return 1
+        return int(payload.get("expectedMatches", 1))
+
+    def count_reason(created: int, expected: int) -> str:
+        if created == expected:
+            return "Exactly 1 story file created as expected" if expected == 1 else f"Exactly {expected} story files created as expected"
+        if created == 0:
+            return "No story file created - session may have failed"
+        if created < 0:
+            return f"Story files decreased ({created}) - unexpected deletion"
+        if created > expected:
+            return f"RUNAWAY CREATION: {created} files created instead of {expected}"
+        return f"Unexpected story artifact count: {created} files instead of {expected}"
+
+    def build_check_response(
+        story_id: str,
+        payload: dict[str, object] | None,
+        *,
+        before_count: int | None = None,
+        after_count: int | None = None,
+        valid_override: bool | None = None,
+        reason_override: str | None = None,
+    ) -> dict[str, object]:
+        expected = expected_matches(payload)
+        created = int(payload.get("actualMatches", 0)) if payload is not None else 0
+        valid = bool(payload.get("verified")) if payload is not None else False
+        reason = count_reason(created, expected)
+        if before_count is not None and after_count is not None:
+            created = after_count - before_count
+            valid = created == expected
+            reason = count_reason(created, expected)
+        if valid_override is not None:
+            valid = valid_override
+        if reason_override is not None:
+            reason = reason_override
         response: dict[str, object] = {
             "valid": valid,
             "verified": valid,
-            "created_count": actual,
+            "created_count": created,
             "expected": expected,
             "prefix": story_prefix(story_id),
             "action": "proceed" if valid else "escalate",
             "reason": reason,
-            "source": payload.get("source", ""),
-            "pattern": payload.get("pattern", ""),
-            "matches": payload.get("matches", []),
+            "source": payload.get("source", "") if payload is not None else "",
+            "pattern": payload.get("pattern", "") if payload is not None else "",
+            "matches": payload.get("matches", []) if payload is not None else [],
         }
-        if payload.get("story"):
+        if before_count is not None and after_count is not None:
+            response["before"] = before_count
+            response["after"] = after_count
+        if payload is not None and payload.get("story"):
             response["story"] = payload["story"]
         return response
+
+    def print_check_error(
+        story_id: str,
+        *,
+        reason: str,
+        before_count: int | None = None,
+        after_count: int | None = None,
+    ) -> int:
+        response = build_check_response(
+            story_id,
+            None,
+            before_count=before_count,
+            after_count=after_count,
+            valid_override=False,
+            reason_override=reason,
+        )
+        print(json.dumps(response, separators=(",", ":")))
+        return 1
 
     if action == "count":
         if not rest:
@@ -70,42 +112,62 @@ def cmd_validate_story_creation(args: list[str]) -> int:
 
     if action == "check":
         if not rest:
-            return check_usage()
+            return print_check_error("", reason="story_id required")
         story_id = rest[0]
         state_file = ""
-        before = after = ""
+        before_value = after_value = None
+        before_seen = after_seen = False
         idx = 1
         while idx < len(rest):
-            if rest[idx] == "--before" and idx + 1 < len(rest):
-                before = rest[idx + 1]
-                idx += 2
+            if rest[idx] == "--before":
+                before_seen = True
+                if idx + 1 < len(rest):
+                    before_value = rest[idx + 1]
+                    idx += 2
+                else:
+                    return print_check_error(story_id, reason="--before requires a value")
                 continue
-            if rest[idx] == "--after" and idx + 1 < len(rest):
-                after = rest[idx + 1]
-                idx += 2
+            if rest[idx] == "--after":
+                after_seen = True
+                if idx + 1 < len(rest):
+                    after_value = rest[idx + 1]
+                    idx += 2
+                else:
+                    return print_check_error(story_id, reason="--after requires a value")
                 continue
             if rest[idx] == "--artifacts-dir" and idx + 1 < len(rest):
                 artifacts_dir = Path(rest[idx + 1])
                 idx += 2
                 continue
+            if rest[idx] == "--artifacts-dir":
+                return print_check_error(story_id, reason="--artifacts-dir requires a value")
             if rest[idx] == "--state-file" and idx + 1 < len(rest):
                 state_file = rest[idx + 1]
                 idx += 2
                 continue
-            idx += 1
-        if artifacts_dir != Path(project_root) / "_bmad-output" / "implementation-artifacts":
-            print("validate-story-creation check no longer supports --artifacts-dir overrides; use count/list for custom folders", file=os.sys.stderr)
-            return 1
+            if rest[idx] == "--state-file":
+                return print_check_error(story_id, reason="--state-file requires a value")
+            return print_check_error(story_id, reason=f"unsupported check argument: {rest[idx]}")
+        if before_seen != after_seen:
+            return print_check_error(story_id, reason="both --before and --after are required together")
+        before_count = after_count = None
+        if before_seen and after_seen:
+            try:
+                before_count = int(before_value or "")
+                after_count = int(after_value or "")
+            except ValueError:
+                return print_check_error(story_id, reason="before/after must be integers")
+        if artifacts_dir != default_artifacts_dir and not (before_seen and after_seen):
+            return print_check_error(
+                story_id,
+                reason="validate-story-creation check no longer supports --artifacts-dir overrides; use count/list for custom folders",
+            )
         try:
             payload = create_check_payload(story_id, state_file)
+            response = build_check_response(story_id, payload, before_count=before_count, after_count=after_count)
         except (PolicyError, ValueError) as exc:
-            print(json.dumps({"valid": False, "verified": False, "action": "escalate", "reason": str(exc)}, separators=(",", ":")))
-            return 1
-        if before:
-            payload["before"] = before
-        if after:
-            payload["after"] = after
-        print(json.dumps(payload, separators=(",", ":")))
+            return print_check_error(story_id, reason=str(exc), before_count=before_count, after_count=after_count)
+        print(json.dumps(response, separators=(",", ":")))
         return 0
 
     if action == "list":
@@ -129,8 +191,12 @@ def cmd_validate_story_creation(args: list[str]) -> int:
         print(story_prefix(rest[0]))
         return 0
 
-    if action and len(rest) >= 2 and rest[0].isdigit() and rest[1].isdigit():
-        return cmd_validate_story_creation(["check", action, "--before", rest[0], "--after", rest[1]])
+    if action and action not in {"count", "check", "list", "prefix"}:
+        if not rest:
+            return print_check_error(action, reason="both --before and --after are required together")
+        if len(rest) == 1:
+            return cmd_validate_story_creation(["check", action, "--before", rest[0]])
+        return cmd_validate_story_creation(["check", action, "--before", rest[0], "--after", rest[1], *rest[2:]])
 
     print("Usage: validate-story-creation <action> [args]", file=os.sys.stderr)
     print("", file=os.sys.stderr)

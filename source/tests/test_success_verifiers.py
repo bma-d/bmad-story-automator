@@ -186,6 +186,151 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertTrue(payload["valid"])
         self.assertEqual(payload["expected"], 1)
 
+    def test_validate_story_creation_check_uses_before_after_delta(self) -> None:
+        self._write_story("1-2-existing", status="draft")
+        self._write_story("1-2-new", status="draft")
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "1", "--after", "2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["valid"])
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 1)
+        self.assertEqual(payload["after"], 2)
+
+    def test_validate_story_creation_positional_mode_forwards_state_file(self) -> None:
+        self._write_story("1-2-example", status="draft")
+        state_file = self._build_state()
+        self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": 2}}}}})
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0", "1", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["valid"])
+        self.assertEqual(payload["expected"], 1)
+        self.assertEqual(payload["created_count"], 1)
+
+    def test_validate_story_creation_check_returns_compat_schema_on_policy_error(self) -> None:
+        self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": "abc"}}}}})
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["expected"], 1)
+        self.assertEqual(payload["created_count"], 0)
+        self.assertEqual(payload["prefix"], "1-2")
+        self.assertEqual(payload["source"], "")
+        self.assertEqual(payload["pattern"], "")
+        self.assertEqual(payload["matches"], [])
+
+    def test_validate_story_creation_check_returns_compat_schema_on_bad_counts(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "x", "--after", "1"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "before/after must be integers")
+        self.assertEqual(payload["expected"], 1)
+        self.assertEqual(payload["created_count"], 0)
+
+    def test_validate_story_creation_check_returns_compat_schema_on_partial_counts(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "1"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "both --before and --after are required together")
+        self.assertEqual(payload["prefix"], "1-2")
+
+    def test_validate_story_creation_check_returns_compat_schema_on_trailing_before_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "--before requires a value")
+
+    def test_validate_story_creation_check_returns_compat_schema_on_empty_counts(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "", "--after", ""])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "before/after must be integers")
+
+    def test_validate_story_creation_check_returns_compat_schema_on_unsupported_artifacts_dir(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--artifacts-dir", str(self.project_root / "tmp")])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertIn("no longer supports --artifacts-dir overrides", payload["reason"])
+
+    def test_validate_story_creation_positional_mode_returns_compat_schema_on_bad_counts(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "x", "1"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "before/after must be integers")
+
+    def test_validate_story_creation_positional_mode_returns_compat_schema_on_missing_after(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "both --before and --after are required together")
+
+    def test_validate_story_creation_positional_mode_returns_compat_schema_on_missing_counts(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "both --before and --after are required together")
+
+    def test_validate_story_creation_positional_mode_returns_compat_schema_on_extra_token(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0", "1", "junk"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "unsupported check argument: junk")
+
+    def test_validate_story_creation_positional_mode_returns_compat_schema_on_incomplete_state_file(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0", "1", "--state-file"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "--state-file requires a value")
+
+    def test_validate_story_creation_check_preserves_zero_expected_matches(self) -> None:
+        self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": 0}}}}})
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["valid"])
+        self.assertEqual(payload["expected"], 0)
+        self.assertEqual(payload["created_count"], 0)
+
     def test_create_story_artifact_rejects_invalid_expected_matches(self) -> None:
         with self.assertRaises(PolicyError):
             create_story_artifact(

@@ -12,7 +12,13 @@ from story_automator.core.frontmatter import (
     parse_frontmatter,
     parse_simple_frontmatter,
 )
-from story_automator.core.runtime_policy import PolicyError, crash_max_retries, load_runtime_policy, review_max_cycles
+from story_automator.core.runtime_policy import (
+    PolicyError,
+    crash_max_retries,
+    load_runtime_policy,
+    review_max_cycles,
+    summarize_state_policy_fields,
+)
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
 from story_automator.core.sprint import sprint_status_epic, sprint_status_get
@@ -246,12 +252,7 @@ def _state_summary(args: list[str]) -> int:
         print_json({"ok": False, "error": "file_not_found"})
         return 1
     fields = parse_simple_frontmatter(read_text(args[0]))
-    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
-    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
-    policy_version = str(fields.get("policyVersion") or "").strip()
-    legacy_policy = str(fields.get("legacyPolicy") or "").strip().lower()
-    if legacy_policy not in {"true", "false"}:
-        legacy_policy = "true" if not snapshot_file and not snapshot_hash and not policy_version else "false"
+    snapshot_file, snapshot_hash, policy_version, legacy_policy = summarize_state_policy_fields(fields)
     print_json(
         {
             "ok": True,

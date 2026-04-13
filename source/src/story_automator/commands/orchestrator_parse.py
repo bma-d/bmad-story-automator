@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import json
 
-from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, step_contract
+from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, parser_runtime_config, step_contract
 from story_automator.core.utils import COMMAND_TIMEOUT_EXIT, extract_json_line, print_json, read_text, run_cmd, trim_lines
-
-
-PARSE_OUTPUT_TIMEOUT = 120
 
 
 def parse_output_action(args: list[str]) -> int:
@@ -32,20 +29,22 @@ def parse_output_action(args: list[str]) -> int:
         return 1
     lines = trim_lines(content)[:150]
     try:
-        contract = step_contract(load_runtime_policy(state_file=state_file), step)
+        policy = load_runtime_policy(state_file=state_file)
+        contract = step_contract(policy, step)
         parse_contract = _load_parse_contract(contract)
+        parser_cfg = parser_runtime_config(policy)
     except (FileNotFoundError, json.JSONDecodeError, ValueError, PolicyError):
         print_json({"status": "error", "reason": "parse_contract_invalid"})
         return 1
     prompt = _build_parse_prompt(contract, parse_contract, "\n".join(lines))
     result = run_cmd(
-        "claude",
+        str(parser_cfg["provider"]),
         "-p",
         "--model",
-        "haiku",
+        str(parser_cfg["model"]),
         prompt,
         env={"STORY_AUTOMATOR_CHILD": "true", "CLAUDECODE": ""},
-        timeout=PARSE_OUTPUT_TIMEOUT,
+        timeout=int(parser_cfg["timeoutSeconds"]),
     )
     if result.exit_code != 0:
         reason = "sub-agent call timed out" if result.exit_code == COMMAND_TIMEOUT_EXIT else "sub-agent call failed"

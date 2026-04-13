@@ -12,6 +12,7 @@ VALID_TOP_LEVEL_KEYS = {"version", "snapshot", "runtime", "workflow", "steps"}
 VALID_STEP_NAMES = {"create", "dev", "auto", "review", "retro"}
 VALID_VERIFIERS = {"create_story_artifact", "session_exit", "review_completion", "epic_complete"}
 VALID_ASSET_NAMES = {"skill", "workflow", "instructions", "checklist", "template"}
+VALID_PARSER_PROVIDERS = {"claude"}
 
 
 def load_bundled_policy(project_root: str | None = None, *, resolve_assets: bool = True) -> dict[str, Any]:
@@ -127,6 +128,17 @@ def load_policy_for_state(
     return load_bundled_policy(str(root), resolve_assets=resolve_assets)
 
 
+def summarize_state_policy_fields(fields: dict[str, Any]) -> tuple[str, str, str, str]:
+    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
+    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
+    policy_version = str(fields.get("policyVersion") or "").strip()
+    try:
+        _, _, legacy_mode = _state_policy_mode(fields)
+    except PolicyError:
+        legacy_mode = False
+    return snapshot_file, snapshot_hash, policy_version, "true" if legacy_mode else "false"
+
+
 def resolve_policy_state_file(project_root: str | Path | None = None, state_file: str | Path | None = None) -> tuple[str, str]:
     root = Path(project_root or get_project_root()).resolve()
     explicit = Path(state_file).expanduser() if state_file else None
@@ -162,6 +174,21 @@ def review_max_cycles(policy: dict[str, Any]) -> int:
 def crash_max_retries(policy: dict[str, Any]) -> int:
     crash = ((policy.get("workflow") or {}).get("crash")) or {}
     return int(crash.get("maxRetries", 2))
+
+
+def parser_runtime_config(policy: dict[str, Any]) -> dict[str, object]:
+    runtime = _expect_optional_dict(policy, "runtime")
+    parser = _expect_optional_nested_dict(runtime, "parser", "runtime")
+    provider = str(parser.get("provider") or "").strip()
+    model = str(parser.get("model") or "").strip()
+    timeout = parser.get("timeoutSeconds")
+    if provider not in VALID_PARSER_PROVIDERS:
+        raise PolicyError(f"runtime.parser.provider must be one of: {', '.join(sorted(VALID_PARSER_PROVIDERS))}")
+    if not model:
+        raise PolicyError("runtime.parser.model must be a string")
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        raise PolicyError("runtime.parser.timeoutSeconds must be a positive integer")
+    return {"provider": provider, "model": model, "timeoutSeconds": timeout}
 
 
 def bundled_skill_root(project_root: str | Path | None = None) -> Path:
@@ -213,6 +240,9 @@ def _validate_policy_shape(policy: dict[str, Any]) -> None:
     snapshot = _expect_optional_dict(policy, "snapshot")
     if "snapshot" in policy and "relativeDir" in snapshot and not isinstance(snapshot.get("relativeDir"), str):
         raise PolicyError("snapshot.relativeDir must be a string")
+    runtime = _expect_optional_dict(policy, "runtime")
+    _expect_optional_nested_dict(runtime, "merge", "runtime")
+    parser_runtime_config(policy)
     workflow = _expect_optional_dict(policy, "workflow")
     repeat = _expect_optional_nested_dict(workflow, "repeat", "workflow")
     review = _expect_optional_nested_dict(repeat, "review", "workflow.repeat")
@@ -370,10 +400,10 @@ def _state_policy_mode(fields: dict[str, Any]) -> tuple[str, str, bool]:
         if not snapshot_file or not snapshot_hash:
             raise PolicyError("state policy metadata incomplete")
         return snapshot_file, snapshot_hash, False
-    if legacy_policy == "true":
-        return "", "", True
     if legacy_policy == "false" or policy_version:
         raise PolicyError("state policy snapshot missing")
+    if legacy_policy == "true":
+        return "", "", True
     return "", "", True
 
 

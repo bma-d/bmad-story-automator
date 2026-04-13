@@ -99,6 +99,11 @@ class RuntimePolicyTests(unittest.TestCase):
         with self.assertRaises(PolicyError):
             load_effective_policy(str(self.project_root))
 
+    def test_invalid_parser_runtime_rejected(self) -> None:
+        self._write_override({"runtime": {"parser": {"provider": "bad", "model": "haiku", "timeoutSeconds": 120}}})
+        with self.assertRaisesRegex(PolicyError, "runtime.parser.provider"):
+            load_effective_policy(str(self.project_root))
+
     def test_snapshot_reload_re_resolves_paths_for_new_root(self) -> None:
         snapshot = snapshot_effective_policy(str(self.project_root))
         copied_root = Path(self.tmp.name) / "copied"
@@ -148,6 +153,15 @@ class RuntimePolicyTests(unittest.TestCase):
         state_file = self.project_root / "orchestration.md"
         state_file.write_text(
             "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\npolicyVersion: 1\nlegacyPolicy: false\n---\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PolicyError, "state policy snapshot missing"):
+            load_runtime_policy(str(self.project_root), state_file=str(state_file))
+
+    def test_contradictory_legacy_flag_with_policy_version_is_rejected(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\npolicyVersion: 1\nlegacyPolicy: true\n---\n",
             encoding="utf-8",
         )
         with self.assertRaisesRegex(PolicyError, "state policy snapshot missing"):

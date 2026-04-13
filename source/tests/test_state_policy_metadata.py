@@ -5,7 +5,7 @@ import json
 import shutil
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from story_automator.commands.orchestrator import cmd_orchestrator_helper
@@ -125,6 +125,19 @@ class StatePolicyMetadataTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["legacyPolicy"], "false")
 
+    def test_summary_does_not_mark_contradictory_legacy_flag_as_legacy(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\npolicyVersion: 1\nlegacyPolicy: true\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["legacyPolicy"], "false")
+
     def test_escalate_uses_pinned_snapshot_when_state_file_provided(self) -> None:
         state_file = self._build_state()
         override_dir = self.project_root / "_bmad" / "bmm"
@@ -147,6 +160,13 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertEqual(code, 0)
         rendered = stdout.getvalue()
         self.assertNotIn("--state-file", rendered)
+
+    def test_build_cmd_rejects_unknown_step_via_policy(self) -> None:
+        stderr = io.StringIO()
+        with patch_env(self.project_root), redirect_stderr(stderr):
+            code = _build_cmd(["ship", "1.1"])
+        self.assertEqual(code, 1)
+        self.assertIn("unknown step: ship", stderr.getvalue())
 
     def _build_state(self) -> Path:
         stdout = io.StringIO()

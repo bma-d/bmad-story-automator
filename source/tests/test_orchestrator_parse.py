@@ -92,6 +92,23 @@ class OrchestratorParseTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(json.loads(stdout.getvalue())["story_created"])
 
+    def test_parser_runtime_uses_policy_settings(self) -> None:
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "story-automator.policy.json").write_text(
+            json.dumps({"runtime": {"parser": {"provider": "claude", "model": "sonnet", "timeoutSeconds": 33}}}),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"SUCCESS","story_created":true,"story_file":"x","summary":"ok","next_action":"proceed"}', 0),
+        ) as mock_run, redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create"])
+        self.assertEqual(code, 0)
+        self.assertEqual(mock_run.call_args.args[:4], ("claude", "-p", "--model", "sonnet"))
+        self.assertEqual(mock_run.call_args.kwargs["timeout"], 33)
+
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"
         source_review = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator-review"

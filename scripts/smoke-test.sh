@@ -4,8 +4,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bmad-story-automator-smoke.XXXXXX")"
+PACK_TARBALL=""
 
 cleanup() {
+  if [ -n "$PACK_TARBALL" ] && [ -f "$PACK_TARBALL" ]; then
+    rm -f "$PACK_TARBALL"
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -294,6 +298,15 @@ verify_legacy_backups() {
   }
 }
 
+pack_fixture_tarball() {
+  PACK_TARBALL="$(cd "$ROOT_DIR" && npm pack --silent)"
+  PACK_TARBALL="$ROOT_DIR/$PACK_TARBALL"
+  [ -f "$PACK_TARBALL" ] || {
+    echo "Missing packed tarball: $PACK_TARBALL" >&2
+    exit 1
+  }
+}
+
 run_case() {
   local name="$1"
   local qa="$2"
@@ -303,7 +316,7 @@ run_case() {
   local root="$TMP_DIR/$name"
 
   make_fixture "$root" "$qa" "$legacy" "$deps_mode" "$story_wrapper_mode"
-  npx --yes --package "file:$ROOT_DIR" bmad-story-automator "$root" >/dev/null
+  npx --yes --package "file:$PACK_TARBALL" bmad-story-automator "$root" >/dev/null
   if [ "$story_wrapper_mode" = "repointed" ]; then
     verify_common_install "$root" preserved
   else
@@ -327,7 +340,7 @@ run_failure_case() {
   local install_log="$root/install.log"
 
   make_fixture "$root" no no "$deps_mode" legacy
-  if npx --yes --package "file:$ROOT_DIR" bmad-story-automator "$root" >"$install_log" 2>&1; then
+  if npx --yes --package "file:$PACK_TARBALL" bmad-story-automator "$root" >"$install_log" 2>&1; then
     echo "Expected install failure for dependency fixture: $name" >&2
     exit 1
   fi
@@ -341,13 +354,14 @@ run_optional_qa_partial_case() {
   local install_log="$root/install.log"
 
   make_fixture "$root" "$qa_mode" no full legacy
-  npx --yes --package "file:$ROOT_DIR" bmad-story-automator "$root" >"$install_log" 2>&1
+  npx --yes --package "file:$PACK_TARBALL" bmad-story-automator "$root" >"$install_log" 2>&1
   verify_common_install "$root"
   verify_qa_prompts_absent "$root"
   assert_contains "Optional skill incomplete: .claude/skills/bmad-qa-generate-e2e-tests requires both SKILL.md and workflow.md|workflow.yaml." "$install_log"
   assert_not_contains "qa-generate-e2e-tests:" "$install_log"
 }
 
+pack_fixture_tarball
 run_case pure-with-qa yes no
 run_case pure-without-qa no no
 run_case pure-migrates-legacy yes yes

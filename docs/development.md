@@ -21,6 +21,7 @@ PYTHONPATH=source/src python3 -m story_automator --help
 The smoke suite validates:
 
 - installer behavior
+- packed `npx` install behavior from the generated tarball
 - required and optional dependency handling
 - legacy backup behavior
 - installed skill layout
@@ -84,9 +85,10 @@ Publish steps:
 Recommended release checklist:
 
 1. `npm run verify`
-2. inspect the package dry-run output
-3. confirm README and docs match shipped behavior
-4. publish
+2. use [$secrets](/Users/joon/.agents/skills/secrets/SKILL.md) for npm auth material; search exact key names, then `secrets load <KEY>` into the publish shell; never print token values
+3. inspect the package dry-run output
+4. confirm README and docs match shipped behavior
+5. publish
 
 ## Read Next
 

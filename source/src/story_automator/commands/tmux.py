@@ -292,7 +292,15 @@ def _build_cmd(args: list[str]) -> int:
     }[step]
     escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
     if agent == "codex" and not ai_command:
-        print(f'codex exec --full-auto "{escaped}"')
+        codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"
+        auth_src = os.path.expanduser("~/.codex/auth.json")
+        print(
+            f'mkdir -p "{codex_home}"'
+            + f' && if [ -f "{auth_src}" ]; then ln -sf "{auth_src}" "{codex_home}/auth.json"; fi'
+            + f' && CODEX_HOME="{codex_home}" codex exec -s workspace-write -c \'approval_policy="never"\''
+            + f' -c \'model_reasoning_effort="high"\''
+            + f' --disable plugins --disable sqlite --disable shell_snapshot "{escaped}"'
+        )
     else:
         print(f'unset CLAUDECODE && {cli} "{escaped}"')
     return 0
@@ -421,18 +429,30 @@ def heartbeat_check(session: str, agent: str) -> tuple[str, float, str, str]:
         return ("completed" if prompt == "true" else "dead", 0.0, "", prompt)
     pane_pid = pane_pid.strip()
     pattern = "codex" if agent == "codex" else "claude"
-    pgrep_out, pgrep_code = run_cmd("pgrep", "-P", pane_pid)
-    if pgrep_code != 0:
+    agent_pid = _find_agent_pid(pane_pid, pattern, 0)
+    if not agent_pid:
         return ("completed" if prompt == "true" else "dead", 0.0, "", prompt)
-    for child in [line.strip() for line in pgrep_out.splitlines() if line.strip()]:
-        comm, _ = run_cmd("ps", "-o", "comm=", "-p", child)
-        if pattern in comm.lower():
-            cpu_out, _ = run_cmd("ps", "-o", "%cpu=", "-p", child)
-            cpu = float(cpu_out.strip() or "0")
-            if int(cpu) > 0:
-                return ("alive", cpu, child, prompt)
-            return ("completed" if prompt == "true" else "idle", cpu, child, prompt)
-    return ("completed" if prompt == "true" else "dead", 0.0, "", prompt)
+    cpu_out, _ = run_cmd("ps", "-o", "%cpu=", "-p", agent_pid)
+    cpu = float(cpu_out.strip() or "0")
+    if int(cpu) > 0:
+        return ("alive", cpu, agent_pid, prompt)
+    return ("completed" if prompt == "true" else "idle", cpu, agent_pid, prompt)
+
+
+def _find_agent_pid(parent: str, pattern: str, depth: int) -> str:
+    if depth > 4:
+        return ""
+    output, code = run_cmd("pgrep", "-P", parent)
+    if code != 0:
+        return ""
+    for child in [line.strip() for line in output.splitlines() if line.strip()]:
+        command, _ = run_cmd("ps", "-o", "comm=", "-p", child)
+        if pattern.lower() in command.lower():
+            return child
+        nested = _find_agent_pid(child, pattern, depth + 1)
+        if nested:
+            return nested
+    return ""
 
 
 def cmd_codex_status_check(args: list[str]) -> int:
@@ -492,8 +512,10 @@ def _codex_session_status(
         output = _write_capture(session, capture, project_root=project_root)
         return {"status": "idle", "todos_done": max(1, todos_done), "todos_total": max(1, todos_total or 1), "active_task": output if full else "", "wait_estimate": 0, "session_state": "completed"}
     heartbeat, cpu, _, prompt = heartbeat_check(session, "codex")
-    if heartbeat == "alive":
-        return {"status": "active", "todos_done": todos_done, "todos_total": todos_total, "active_task": extract_active_task(capture) or f"Codex working (CPU: {cpu:.1f}%)", "wait_estimate": 90, "session_state": "in_progress"}
+    if heartbeat in {"alive", "idle"}:
+        active_task = extract_active_task(capture) or ("Codex working" if heartbeat == "alive" else "Codex running")
+        wait_estimate = 90 if heartbeat == "alive" else 60
+        return {"status": "active", "todos_done": todos_done, "todos_total": todos_total, "active_task": active_task, "wait_estimate": wait_estimate, "session_state": "in_progress"}
     if prompt == "true":
         output = _write_capture(session, capture, project_root=project_root)
         return {"status": "idle", "todos_done": max(1, todos_done), "todos_total": max(1, todos_total or 1), "active_task": output if full else "", "wait_estimate": 0, "session_state": "completed"}
@@ -569,8 +591,7 @@ def _claude_session_status(
     pane_pid, pane_pid_code = run_cmd("tmux", "display-message", "-t", session, "-p", "#{pane_pid}")
     claude_running = False
     if pane_pid_code == 0 and pane_pid.strip():
-        _, child_code = run_cmd("pgrep", "-P", pane_pid.strip(), "-f", "claude")
-        claude_running = child_code == 0
+        claude_running = bool(_find_agent_pid(pane_pid.strip(), "claude", 0))
 
     activity_detected = bool(
         re.search(

@@ -416,10 +416,12 @@ def _verify_step(args: list[str]) -> int:
             output_file=output_file,
             contract=contract,
         )
+        exit_code = 0
     except (FileNotFoundError, PolicyError) as exc:
         payload = {"verified": False, "step": step, "input": story_key, "reason": "verifier_contract_invalid", "error": str(exc)}
+        exit_code = 1
     print_json(payload)
-    return 0 if bool(payload.get("verified")) else 1
+    return exit_code
 
 
 def _parse_context_int(context: str, key: str) -> int:

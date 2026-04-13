@@ -152,6 +152,15 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertTrue(payload["verified"])
         self.assertEqual(payload["expectedMatches"], 1)
 
+    def test_verify_step_create_returns_json_on_verification_failure(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["verify-step", "create", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "unexpected_story_artifact_count")
+
     def test_create_story_artifact_rejects_invalid_expected_matches(self) -> None:
         with self.assertRaises(PolicyError):
             create_story_artifact(

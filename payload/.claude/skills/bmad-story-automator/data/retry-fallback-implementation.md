@@ -37,7 +37,7 @@ while [ $attempt -lt $max_attempts ] && [ "$success" = "false" ]; do
     # Execute workflow step
     session=$("$scripts" tmux-wrapper spawn {step} {epic} {story_id} \
         --agent "$current_agent" \
-        --command "$("$scripts" tmux-wrapper build-cmd {step} {story_id} --agent "$current_agent")")
+        --command "$("$scripts" tmux-wrapper build-cmd {step} {story_id} --agent "$current_agent" --state-file "$state_file")")
     result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
 
     # Cleanup session

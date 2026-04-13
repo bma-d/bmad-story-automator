@@ -24,22 +24,24 @@ scripts/
 
 ---
 
-## Standard Workflow: Spawn + Monitor + Parse
+## Standard Workflow: Spawn + Monitor + Verify (Create Example)
 
 ```bash
 # STEP 1: Spawn session (use $scripts tmux-wrapper)
 session_name=$("$scripts" tmux-wrapper spawn create 5 5.3 \
-  --command "$("$scripts" tmux-wrapper build-cmd create 5.3)")
+  --command "$("$scripts" tmux-wrapper build-cmd create 5.3 --state-file "$state_file")")
 
 # STEP 2: Monitor until completion (SINGLE API CALL)
-result=$("$scripts" monitor-session "$session_name" --verbose --json)
+result=$("$scripts" monitor-session "$session_name" \
+  --verbose --json \
+  --workflow create --story-key 5.3 --state-file "$state_file")
 
-# STEP 3: Parse output with sub-agent
-output_file=$(echo "$result" | jq -r '.output_file')
-parsed=$("$scripts" orchestrator-helper parse-output "$output_file" create)
+# STEP 3: Verify success against the shared create contract
+validation=$("$scripts" orchestrator-helper verify-step create 5.3 --state-file "$state_file")
+verified=$(echo "$validation" | jq -r '.verified')
 
-# STEP 4: Act on parsed result
-next_action=$(echo "$parsed" | jq -r '.next_action')
+# STEP 4: Act on verifier result
+[ "$verified" = "true" ] || echo "retry-or-escalate"
 
 # STEP 5: ALWAYS cleanup session (v1.2.0)
 "$scripts" tmux-wrapper kill "$session_name"
@@ -120,7 +122,7 @@ After `$scripts monitor-session` returns:
 
 | final_state | Action |
 |-------------|--------|
-| `completed` | Parse output → act on `next_action` |
+| `completed` | Run step verifier or parser for the active workflow |
 | `incomplete` | **(v2.2)** Session idle but workflow NOT verified → Escalate immediately |
 | `crashed` | Check retry count → retry or escalate |
 | `stuck` | Get output → investigate → may need restart |

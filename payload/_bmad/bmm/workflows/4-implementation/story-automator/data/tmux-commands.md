@@ -112,6 +112,12 @@ The status check script automatically detects Claude vs Codex sessions:
 - **Codex completion cues:** `tokens used` line, shell prompt return (e.g., `❯`, `$`, `#`), or clean tmux exit
 - Codex sessions get 1.5x longer wait estimates (90s vs 60s default); "succeeded" alone is not treated as active
 
+**Runtime Behavior (v1.13.0):**
+- Normal `tmux-wrapper spawn` now uses a runner-based tmux path with explicit session state, not `tmux send-keys`
+- Lifecycle truth comes from the session state file first; pane capture is still used for exported `output_file` artifacts
+- Sessions keep dead panes with `remain-on-exit on`, so `pane_dead` and `pane_dead_status` remain inspectable after completion
+- Temporary migration switch: `SA_TMUX_RUNTIME=legacy|runner|auto` (`auto` is the default)
+
 **For full output (when completed/stuck):**
 ```bash
 script="$(find "{project_root}/_bmad/bmm" -maxdepth 5 -type f -path '*/bin/story-automator' | head -n 1)"
@@ -150,14 +156,20 @@ This environment variable tells the stop hook to allow the session to complete n
 Without it, the stop hook will block child sessions from stopping, causing infinite loops.
 
 ```bash
-# CRITICAL: Always use -x 200 -y 50 for wide terminal (prevents line-wrap issues with long commands)
-tmux new-session -d -s "SESSION_NAME" -x 200 -y 50 -c "PROJECT_PATH" -e STORY_AUTOMATOR_CHILD=true
-tmux send-keys -t "SESSION_NAME" "COMMAND_HERE" Enter
+# Current implementation:
+# 1. create the session with an inert placeholder command
+# 2. set remain-on-exit on the pane/session
+# 3. respawn the pane into a bash runner that executes the per-session command file
+tmux new-session -d -s "SESSION_NAME" -x 200 -y 50 -c "PROJECT_PATH" \
+  -e STORY_AUTOMATOR_CHILD=true -e AI_AGENT=codex -e CLAUDECODE= -e BASH_ENV= \
+  /bin/sleep 86400
+tmux set-option -t "PANE_ID" remain-on-exit on
+tmux respawn-pane -k -t "PANE_ID" /usr/bin/bash "/tmp/.sa-<hash>-session-SESSION_NAME-runner.sh"
 ```
 
-**Terminal Dimensions:** The `-x 200 -y 50` flags create a wider terminal window. This is **REQUIRED** for commands longer than 80 characters (e.g., YOLO mode retrospective prompts ~1500 chars). Without this, line-wrapping causes shell parsing failures and silent command execution failures.
+**Terminal Dimensions:** The `-x 200 -y 50` flags remain required. They preserve the wide pane geometry used for interactive agent sessions and pane-derived transcripts.
 
-**Long Command Script Files:** Commands exceeding 500 characters are written to `/tmp/sa-cmd-{session}.sh` and executed via `bash /tmp/sa-cmd-{session}.sh`. The `bash` prefix is critical — without it, the shell receives a raw path and silently fails. These script files are not auto-cleaned; they persist in `/tmp/` until system cleanup.
+**Command Files:** The runtime now always writes a per-session command file and a per-session runner file. This removes the old short-command vs long-command split and avoids quoting or line-wrap failures from `send-keys`. Explicit `tmux-wrapper kill` deletes these artifacts; stale terminal artifacts are garbage-collected after the retention TTL.
 
 See `data/tmux-long-command-debugging.md` for detailed troubleshooting.
 

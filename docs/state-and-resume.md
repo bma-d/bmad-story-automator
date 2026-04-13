@@ -35,6 +35,10 @@ Important frontmatter fields:
 - `agentConfig`
 - `activeSessions`
 - `completedSessions`
+- `policyVersion`
+- `policySnapshotFile`
+- `policySnapshotHash`
+- `legacyPolicy`
 
 ### Body Sections
 
@@ -106,6 +110,25 @@ flowchart TD
 ```
 
 Resume is step-aware. It does not blindly restart from the beginning.
+
+### Policy Rules On Resume
+
+- new-format state docs must load `policySnapshotFile` plus `policySnapshotHash`
+- missing or mismatched snapshots are validation failures, not fallback cases
+- old state docs without snapshot metadata resume in legacy mode with bundled defaults
+- `state-summary` reports `legacyPolicy: true` for those legacy resumes
+
+### Legacy Env Compatibility
+
+For one release cycle, `MAX_REVIEW_CYCLES` and `MAX_CRASH_RETRIES` still work at orchestration start.
+
+They are resolved once, written into the effective policy snapshot, and ignored on resume after that.
+
+Deprecation path:
+
+1. keep existing env knobs working for fresh starts
+2. prefer JSON policy overrides for new setup
+3. remove the env path after the compatibility window closes
 
 ## Validate Flow
 

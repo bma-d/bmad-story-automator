@@ -14,23 +14,34 @@ VALID_VERIFIERS = {"create_story_artifact", "session_exit", "review_completion",
 VALID_ASSET_NAMES = {"skill", "workflow", "instructions", "checklist", "template"}
 
 
+def load_bundled_policy(project_root: str | None = None, *, resolve_assets: bool = True) -> dict[str, Any]:
+    root = Path(project_root or get_project_root()).resolve()
+    bundle_root = bundled_skill_root(root)
+    policy = _read_json(bundle_root / "data" / "orchestration-policy.json")
+    _validate_policy_shape(policy)
+    if resolve_assets:
+        _resolve_policy_paths(policy, project_root=root, bundle_root=bundle_root)
+    else:
+        _resolve_success_paths(policy, project_root=root, bundle_root=bundle_root)
+    return policy
+
+
 class PolicyError(ValueError):
     pass
 
 
 def load_effective_policy(project_root: str | None = None, *, resolve_assets: bool = True) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
-    bundle_root = bundled_skill_root(root)
-    bundled = _read_json(bundle_root / "data" / "orchestration-policy.json")
+    bundled = load_bundled_policy(str(root), resolve_assets=False)
     override_path = root / "_bmad" / "bmm" / "story-automator.policy.json"
     override = _read_json(override_path) if override_path.is_file() else {}
     policy = _deep_merge(bundled, override)
     _apply_legacy_env(policy)
     _validate_policy_shape(policy)
     if resolve_assets:
-        _resolve_policy_paths(policy, project_root=root, bundle_root=bundle_root)
+        _resolve_policy_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
     else:
-        _resolve_success_paths(policy, project_root=root, bundle_root=bundle_root)
+        _resolve_success_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
     return policy
 
 
@@ -43,11 +54,10 @@ def load_runtime_policy(
     root = Path(project_root or get_project_root()).resolve()
     resolved_state, source = resolve_policy_state_file(root, state_file)
     if resolved_state:
-        try:
-            return load_policy_for_state(resolved_state, project_root=str(root), resolve_assets=resolve_assets)
-        except (FileNotFoundError, PolicyError):
-            if source == "explicit":
-                raise
+        state_path = Path(resolved_state)
+        if source != "explicit" and not state_path.is_file():
+            return load_effective_policy(str(root), resolve_assets=resolve_assets)
+        return load_policy_for_state(str(state_path), project_root=str(root), resolve_assets=resolve_assets)
     return load_effective_policy(str(root), resolve_assets=resolve_assets)
 
 
@@ -117,7 +127,7 @@ def load_policy_for_state(
             expected_hash=snapshot_hash,
             resolve_assets=resolve_assets,
         )
-    return load_effective_policy(str(root), resolve_assets=resolve_assets)
+    return load_bundled_policy(str(root), resolve_assets=resolve_assets)
 
 
 def resolve_policy_state_file(project_root: str | Path | None = None, state_file: str | Path | None = None) -> tuple[str, str]:

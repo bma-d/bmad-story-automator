@@ -5,8 +5,15 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from story_automator.core.runtime_policy import PolicyError, load_effective_policy, load_runtime_policy, snapshot_effective_policy
+from story_automator.core.runtime_policy import (
+    PolicyError,
+    load_effective_policy,
+    load_policy_snapshot,
+    load_runtime_policy,
+    snapshot_effective_policy,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -58,6 +65,18 @@ class RuntimePolicyTests(unittest.TestCase):
         second = snapshot_effective_policy(str(self.project_root))
         self.assertEqual(first["policySnapshotHash"], second["policySnapshotHash"])
 
+    def test_snapshot_bakes_legacy_env_values_for_resume(self) -> None:
+        with patch.dict("os.environ", {"MAX_REVIEW_CYCLES": "2", "MAX_CRASH_RETRIES": "4"}, clear=False):
+            snapshot = snapshot_effective_policy(str(self.project_root))
+        with patch.dict("os.environ", {"MAX_REVIEW_CYCLES": "9", "MAX_CRASH_RETRIES": "9"}, clear=False):
+            policy = load_policy_snapshot(
+                snapshot["policySnapshotFile"],
+                project_root=str(self.project_root),
+                expected_hash=snapshot["policySnapshotHash"],
+            )
+        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 2)
+        self.assertEqual(policy["workflow"]["crash"]["maxRetries"], 4)
+
     def test_malformed_override_json_raises_policy_error(self) -> None:
         override_dir = self.project_root / "_bmad" / "bmm"
         override_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +120,29 @@ class RuntimePolicyTests(unittest.TestCase):
         marker.write_text("{bad json", encoding="utf-8")
         policy = load_runtime_policy(str(self.project_root))
         self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
+
+    def test_legacy_state_uses_bundled_defaults_without_override_or_env(self) -> None:
+        self._write_override({"workflow": {"repeat": {"review": {"maxCycles": 1}}}})
+        legacy_state = self.project_root / "legacy.md"
+        legacy_state.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\n---\n",
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"MAX_REVIEW_CYCLES": "2"}, clear=False):
+            policy = load_runtime_policy(str(self.project_root), state_file=str(legacy_state))
+        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
+
+    def test_marker_resume_with_missing_snapshot_raises_policy_error(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"_bmad-output/story-automator/snapshots/missing.json\"\npolicySnapshotHash: \"deadbeef\"\n---\n",
+            encoding="utf-8",
+        )
+        marker = self.project_root / ".claude" / ".story-automator-active"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"stateFile": str(state_file.relative_to(self.project_root))}), encoding="utf-8")
+        with self.assertRaises(PolicyError):
+            load_runtime_policy(str(self.project_root))
 
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"

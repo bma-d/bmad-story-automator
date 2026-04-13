@@ -5,7 +5,13 @@ import os
 import re
 from pathlib import Path
 
-from story_automator.core.frontmatter import extract_last_action, find_frontmatter_value, find_frontmatter_value_case, parse_frontmatter
+from story_automator.core.frontmatter import (
+    extract_last_action,
+    find_frontmatter_value,
+    find_frontmatter_value_case,
+    parse_frontmatter,
+    parse_simple_frontmatter,
+)
 from story_automator.core.runtime_policy import PolicyError, crash_max_retries, load_runtime_policy, review_max_cycles
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
@@ -239,19 +245,25 @@ def _state_summary(args: list[str]) -> int:
     if not args or not file_exists(args[0]):
         print_json({"ok": False, "error": "file_not_found"})
         return 1
+    fields = parse_simple_frontmatter(read_text(args[0]))
+    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
+    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
+    legacy_policy = str(fields.get("legacyPolicy") or "").strip().lower()
+    if legacy_policy not in {"true", "false"}:
+        legacy_policy = "true" if not snapshot_file and not snapshot_hash else "false"
     print_json(
         {
             "ok": True,
-            "epic": find_frontmatter_value(args[0], "epic"),
-            "epicName": find_frontmatter_value(args[0], "epicName"),
-            "currentStory": find_frontmatter_value(args[0], "currentStory"),
-            "currentStep": find_frontmatter_value(args[0], "currentStep"),
-            "status": find_frontmatter_value(args[0], "status"),
-            "lastUpdated": find_frontmatter_value(args[0], "lastUpdated"),
-            "policyVersion": find_frontmatter_value(args[0], "policyVersion"),
-            "policySnapshotFile": find_frontmatter_value(args[0], "policySnapshotFile"),
-            "policySnapshotHash": find_frontmatter_value(args[0], "policySnapshotHash"),
-            "legacyPolicy": find_frontmatter_value(args[0], "legacyPolicy"),
+            "epic": str(fields.get("epic") or ""),
+            "epicName": str(fields.get("epicName") or ""),
+            "currentStory": str(fields.get("currentStory") or ""),
+            "currentStep": str(fields.get("currentStep") or ""),
+            "status": str(fields.get("status") or ""),
+            "lastUpdated": str(fields.get("lastUpdated") or ""),
+            "policyVersion": str(fields.get("policyVersion") or ""),
+            "policySnapshotFile": snapshot_file,
+            "policySnapshotHash": snapshot_hash,
+            "legacyPolicy": legacy_policy,
             "lastAction": extract_last_action(args[0]),
         }
     )

@@ -69,6 +69,35 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["structure"], "ok")
 
+    def test_summary_infers_legacy_policy_for_old_state(self) -> None:
+        legacy = self.project_root / "legacy.md"
+        legacy.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(legacy)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertEqual(payload["legacyPolicy"], "true")
+
+    def test_validate_state_rejects_new_state_with_missing_snapshot(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\npolicySnapshotFile: \"_bmad-output/story-automator/snapshots/missing.json\"\npolicySnapshotHash: \"deadbeef\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_state(["--state", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["structure"], "issues")
+        self.assertTrue(any("policy snapshot missing" in issue for issue in payload["issues"]))
+
     def test_escalate_uses_pinned_snapshot_when_state_file_provided(self) -> None:
         state_file = self._build_state()
         override_dir = self.project_root / "_bmad" / "bmm"

@@ -68,6 +68,15 @@ python3 -m story_automator
 
 with `PYTHONPATH` pointed at `source/src`.
 
+## Legacy Env Compatibility
+
+For one release cycle, fresh orchestration starts still honor:
+
+- `MAX_REVIEW_CYCLES`
+- `MAX_CRASH_RETRIES`
+
+Those values are resolved once during snapshot creation. Resume paths read the pinned snapshot, not the current shell env. Prefer `_bmad/bmm/story-automator.policy.json` for new configuration changes.
+
 ## What To Re-Check After Runtime Changes
 
 If you change:

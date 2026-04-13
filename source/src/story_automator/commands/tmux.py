@@ -6,8 +6,8 @@ import re
 import time
 from pathlib import Path
 
-from story_automator.core.runtime_policy import load_runtime_policy, step_contract
-from story_automator.core.review_verify import verify_code_review_completion
+from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, step_contract
+from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
 from story_automator.core.utils import (
     atomic_write,
     command_exists,
@@ -652,7 +652,7 @@ def cmd_monitor_session(args: list[str]) -> int:
         return 1
     if args[0] in {"--help", "-h"}:
         print("Usage: monitor-session <session_name> [options]")
-        print("Options: --max-polls N --initial-wait N --project-root PATH --timeout MIN --verbose --json --agent TYPE --workflow TYPE --story-key KEY")
+        print("Options: --max-polls N --initial-wait N --project-root PATH --timeout MIN --verbose --json --agent TYPE --workflow TYPE --story-key KEY --state-file PATH")
         return 0
     session = args[0]
     max_polls = 30
@@ -662,6 +662,7 @@ def cmd_monitor_session(args: list[str]) -> int:
     agent = os.environ.get("AI_AGENT", "claude")
     workflow = "dev"
     story_key = ""
+    state_file = ""
     project_root = get_project_root()
     idx = 1
     while idx < len(args):
@@ -692,6 +693,10 @@ def cmd_monitor_session(args: list[str]) -> int:
             story_key = args[idx + 1]
             idx += 2
             continue
+        elif arg == "--state-file" and idx + 1 < len(args):
+            state_file = args[idx + 1]
+            idx += 2
+            continue
         elif arg == "--project-root" and idx + 1 < len(args):
             project_root = args[idx + 1]
             idx += 2
@@ -713,11 +718,26 @@ def cmd_monitor_session(args: list[str]) -> int:
         state = str(status["session_state"])
         if state == "completed":
             output = session_status(session, full=True, codex=agent == "codex", project_root=project_root)["active_task"]
-            if workflow == "review" and story_key:
-                verified = verify_code_review_completion(project_root, story_key)
+            verification = _verify_monitor_completion(
+                workflow,
+                project_root=project_root,
+                story_key=story_key,
+                output_file=str(output),
+                state_file=state_file or None,
+            )
+            if verification is not None:
+                verified, verifier_name = verification
                 if bool(verified.get("verified")):
-                    return _emit_monitor(json_output, "completed", last_done, last_total, str(output), "verified_complete")
-                return _emit_monitor(json_output, "incomplete", last_done, last_total, str(output), "workflow_not_verified")
+                    reason = "normal_completion" if verifier_name == "session_exit" else "verified_complete"
+                    return _emit_monitor(json_output, "completed", last_done, last_total, str(output), reason)
+                return _emit_monitor(
+                    json_output,
+                    "incomplete",
+                    last_done,
+                    last_total,
+                    str(output),
+                    str(verified.get("reason") or "workflow_not_verified"),
+                )
             return _emit_monitor(json_output, "completed", last_done, last_total, str(output), "normal_completion")
         if state == "crashed":
             crashed = session_status(session, full=True, codex=agent == "codex", project_root=project_root)
@@ -745,3 +765,31 @@ def _emit_monitor(json_output: bool, state: str, done: int, total: int, output_f
     else:
         print(f"{state},{done},{total},{output_file},{reason}")
     return 0
+
+
+def _verify_monitor_completion(
+    workflow: str,
+    *,
+    project_root: str,
+    story_key: str,
+    output_file: str,
+    state_file: str | Path | None = None,
+) -> tuple[dict[str, object], str] | None:
+    try:
+        contract = resolve_success_contract(project_root, workflow, state_file=state_file)
+    except (FileNotFoundError, PolicyError):
+        return ({"verified": False, "reason": "verifier_contract_invalid"}, "")
+    verifier_name = str(contract.get("verifier") or "").strip()
+    if not verifier_name:
+        return None
+    try:
+        result = run_success_verifier(
+            verifier_name,
+            project_root=project_root,
+            story_key=story_key,
+            output_file=output_file,
+            contract=contract,
+        )
+    except PolicyError:
+        return ({"verified": False, "reason": "verifier_contract_invalid"}, verifier_name)
+    return (result, verifier_name)

@@ -378,7 +378,12 @@ def _verify_code_review(args: list[str]) -> int:
     if not args:
         print_json({"verified": False, "reason": "story_key_required"})
         return 1
-    payload = verify_code_review_completion(get_project_root(), args[0])
+    state_file = ""
+    tail = args[1:]
+    for idx, arg in enumerate(tail):
+        if arg == "--state-file" and idx + 1 < len(tail):
+            state_file = tail[idx + 1]
+    payload = verify_code_review_completion(get_project_root(), args[0], state_file=state_file or None)
     print_json(payload)
     return 0 if bool(payload.get("verified")) else 1
 

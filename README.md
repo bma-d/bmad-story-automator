@@ -2,54 +2,115 @@
 
 ![Story Automator](./ref.png)
 
-Portable npm installer for the BMAD `bmad-story-automator` pure skill. The package bundles the story automator workflow, the review workflow, and the Python helper runtime into a target project’s `.claude/skills` tree.
+Portable npm bundle for the BMAD `bmad-story-automator` pure skill. This repo packages:
 
-This repository is the Python port of [`bma-d/bmad-story-automator-go`](https://github.com/bma-d/bmad-story-automator-go). It has been tested less than the Go implementation, so treat the Go repository as the more battle-tested reference.
+- the main orchestration skill
+- the bundled review skill
+- the Python helper runtime that parses stories, builds state docs, spawns tmux sessions, monitors child agents, and verifies review completion
 
-Run this after planning is complete and the target project already has the pure BMAD implementation skills installed.
+This is the Python port of [`bma-d/bmad-story-automator-go`](https://github.com/bma-d/bmad-story-automator-go). The Go README is the stylistic and operator-facing reference; this repo now documents the Python implementation in the same spirit, but with Python-specific behavior and Codex child-session support.
 
 ## Quickstart
+
+Install into the target BMAD project:
 
 ```bash
 cd /absolute/path/to/your-bmad-project
 npx bmad-story-automator
 ```
 
-Then invoke the installed skill from Claude:
-
-```text
-Use the bmad-story-automator skill.
-```
-
-Or install into a project explicitly:
+Or install from anywhere:
 
 ```bash
 npx bmad-story-automator /absolute/path/to/your-bmad-project
 ```
 
-## What This Installs
+Then run the installed skill from Claude:
 
-The installer writes:
+```text
+Use the bmad-story-automator skill.
+```
 
-- `.claude/skills/bmad-story-automator`
-- `.claude/skills/bmad-story-automator-review`
+## Expectations
 
-The main skill includes:
+- This is an orchestrator, not a correctness guarantee. Bad planning artifacts still produce bad implementation runs.
+- The orchestrator itself is a Claude skill. Child sessions can use Claude or Codex depending on agent configuration.
+- Retrospectives are Claude-only.
+- The automator expects sprint planning to be complete before it starts.
+- Review completion is gated by verification, not by child-session exit alone.
+- If the optional QA automate skill is missing, install still succeeds, but runs should use `Skip Automate = true`.
 
-- `SKILL.md`
-- `workflow.md`
-- `steps-c/`, `steps-v/`, `steps-e/`
-- `data/`
-- `templates/`
-- `scripts/story-automator`
-- `src/story_automator`
-- `pyproject.toml`
+## What This Is
 
-The review skill remains self-contained with its own `SKILL.md`, `workflow.yaml`, `instructions.xml`, and `checklist.md`.
+Story Automator automates the BMAD implementation loop for one or more stories:
 
-The installer does not create Claude command wrappers. It always removes the obsolete `.claude/commands/bmad-bmm-story-automator-py.md` shim if present, and removes previously generated story-automator command shims only when they still point at old workflow-root installs.
+1. create story
+2. implement story
+3. optionally run automate/test generation
+4. run adversarial code review with retries
+5. commit verified work
+6. trigger retrospective when an epic is fully complete
 
-Legacy story-automator installs under `_bmad/bmm/4-implementation/...` or `_bmad/bmm/workflows/4-implementation/...` are backed up during migration. Those locations are no longer primary install targets.
+The core runtime model is:
+
+- one orchestrator session
+- one markdown state document
+- many short-lived tmux child sessions
+- one marker file guarding against accidental stop
+- `sprint-status.yaml` plus story files as the source of workflow truth
+
+## How It Works
+
+```mermaid
+flowchart TD
+    A["Install into BMAD project<br/>npx bmad-story-automator"] --> B["Run bmad-story-automator skill in Claude"]
+    B --> C["Load BMAD config and determine mode"]
+    C --> D{"Mode"}
+    D -->|Create| E["Init -> Preflight -> Configure -> Finalize"]
+    D -->|Resume| F["Load state -> compare sprint status -> inspect sessions"]
+    D -->|Validate| G["State audit -> session audit -> progress audit"]
+    D -->|Edit| H["Load state -> modify config -> save"]
+    E --> I["Execution loop"]
+    F --> I
+    I --> J["Wrap up and remove marker"]
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O as Orchestrator
+    participant S as State Doc
+    participant T as tmux Child
+    participant P as Sprint Status
+    participant R as Review Skill
+
+    O->>S: Create or load orchestration state
+    O->>T: Spawn create/dev/auto child session
+    T-->>O: monitor-session result
+    O->>P: Verify source of truth
+    O->>R: Run code-review loop until verified
+    R-->>P: Sync story status
+    O->>S: Update progress, current step, action log
+```
+
+Practical shape:
+
+- create, resume, validate, and edit are first-class modes
+- preflight complexity scoring happens before agent selection
+- `done` is gated by review verification
+- retrospectives fire inside the execution loop, per epic, not only at the very end
+
+## Docs Map
+
+- [How It Works](./docs/how-it-works.md)
+- [Story Execution](./docs/story-execution.md)
+- [State And Resume](./docs/state-and-resume.md)
+- [Agents And Monitoring](./docs/agents-and-monitoring.md)
+- [Installation And Layout](./docs/installation-and-layout.md)
+- [Review Workflow](./docs/review-workflow.md)
+- [CLI Reference](./docs/cli-reference.md)
+- [Troubleshooting](./docs/troubleshooting.md)
+- [Development](./docs/development.md)
 
 ## Requirements
 
@@ -68,30 +129,11 @@ Target project requirements:
 - `.claude/skills/bmad-retrospective`
 - optional `.claude/skills/bmad-qa-generate-e2e-tests`
 
-If the QA skill is missing, install still succeeds. Run story-automator with `Skip Automate = true` unless you install `.claude/skills/bmad-qa-generate-e2e-tests`.
+If the QA skill is missing, install still succeeds. Run Story Automator with `Skip Automate = true` unless the QA skill is installed.
 
-## Package Layout
+## Install Verification
 
-Payload copied into target projects:
-
-- `payload/.claude/skills/bmad-story-automator/`
-- `payload/.claude/skills/bmad-story-automator-review/`
-
-Package scripts:
-
-- `install.sh`
-- `bin/bmad-story-automator`
-- `package.json`
-
-Bundled runtime source:
-
-- `source/pyproject.toml`
-- `source/scripts/story-automator`
-- `source/src/story_automator/`
-
-## Verify Install
-
-Manual checks inside a target project:
+Inside a target project:
 
 ```bash
 cd /path/to/project
@@ -104,9 +146,9 @@ grep -n "0 CRITICAL issues remain after fixes" .claude/skills/bmad-story-automat
 
 Expected:
 
-- command help output from `story-automator`
-- skill name `bmad-story-automator`
-- a matching `CRITICAL issues remain` line in the review instructions
+- helper CLI prints usage
+- the main skill exists
+- the bundled review gate exists
 
 ## Development Verification
 
@@ -115,9 +157,13 @@ npm run verify
 PYTHONPATH=source/src python3 -m story_automator --help
 ```
 
+More: [Development](./docs/development.md)
+
 ## Publish To npm
 
 Publish steps:
 
 - `npm adduser`
 - `npm publish`
+
+More: [Development](./docs/development.md#release)

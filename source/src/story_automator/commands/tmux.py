@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 
-from story_automator.core.runtime_policy import load_effective_policy, step_contract
+from story_automator.core.runtime_policy import load_runtime_policy, step_contract
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.utils import (
     atomic_write,
@@ -175,9 +175,14 @@ def _build_cmd(args: list[str]) -> int:
     extra = ""
     tail = args[2:]
     idx = 0
+    state_file = ""
     while idx < len(tail):
         if tail[idx] == "--agent" and idx + 1 < len(tail):
             agent = tail[idx + 1]
+            idx += 2
+            continue
+        if tail[idx] == "--state-file" and idx + 1 < len(tail):
+            state_file = tail[idx + 1]
             idx += 2
             continue
         extra = f"{extra} {tail[idx]}".strip()
@@ -188,7 +193,7 @@ def _build_cmd(args: list[str]) -> int:
     if step not in {"create", "dev", "auto", "review", "retro"}:
         print(f"Unknown step type: {step}", file=__import__("sys").stderr)
         return 1
-    policy = load_effective_policy(root)
+    policy = load_runtime_policy(root, state_file=state_file)
     ai_command = os.environ.get("AI_COMMAND")
     if ai_command and not os.environ.get("AI_AGENT"):
         cli = ai_command

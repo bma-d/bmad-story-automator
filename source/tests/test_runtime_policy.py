@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from story_automator.core.runtime_policy import PolicyError, load_effective_policy, snapshot_effective_policy
+from story_automator.core.runtime_policy import PolicyError, load_effective_policy, load_runtime_policy, snapshot_effective_policy
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +57,50 @@ class RuntimePolicyTests(unittest.TestCase):
         first = snapshot_effective_policy(str(self.project_root))
         second = snapshot_effective_policy(str(self.project_root))
         self.assertEqual(first["policySnapshotHash"], second["policySnapshotHash"])
+
+    def test_malformed_override_json_raises_policy_error(self) -> None:
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "story-automator.policy.json").write_text("{bad json", encoding="utf-8")
+        with self.assertRaises(PolicyError):
+            load_effective_policy(str(self.project_root))
+
+    def test_invalid_assets_type_rejected(self) -> None:
+        self._write_override({"steps": {"review": {"assets": []}}})
+        with self.assertRaises(PolicyError):
+            load_effective_policy(str(self.project_root))
+
+    def test_invalid_workflow_and_snapshot_types_rejected(self) -> None:
+        self._write_override({"workflow": [], "snapshot": []})
+        with self.assertRaises(PolicyError):
+            load_effective_policy(str(self.project_root))
+
+    def test_invalid_nested_workflow_types_rejected(self) -> None:
+        self._write_override({"workflow": {"repeat": [1], "crash": [2]}})
+        with self.assertRaises(PolicyError):
+            load_effective_policy(str(self.project_root))
+
+    def test_snapshot_reload_re_resolves_paths_for_new_root(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        copied_root = Path(self.tmp.name) / "copied"
+        shutil.copytree(self.project_root, copied_root)
+        policy = load_runtime_policy(str(copied_root), state_file=str(copied_root / snapshot["policySnapshotFile"]))
+        template_path = policy["steps"]["create"]["prompt"]["templatePath"]
+        self.assertTrue(str(copied_root) in template_path)
+
+    def test_missing_marker_state_falls_back_to_effective_policy(self) -> None:
+        marker = self.project_root / ".claude" / ".story-automator-active"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"stateFile": "missing.md"}), encoding="utf-8")
+        policy = load_runtime_policy(str(self.project_root))
+        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
+
+    def test_malformed_marker_falls_back_to_effective_policy(self) -> None:
+        marker = self.project_root / ".claude" / ".story-automator-active"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("{bad json", encoding="utf-8")
+        policy = load_runtime_policy(str(self.project_root))
+        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
 
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"

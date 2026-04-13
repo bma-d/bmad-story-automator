@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from story_automator.commands.state import cmd_build_state_doc
 from story_automator.commands.orchestrator_parse import parse_output_action
 from story_automator.core.utils import CommandResult
 
@@ -74,6 +75,23 @@ class OrchestratorParseTests(unittest.TestCase):
         self.assertIn("issues_found", payload)
         self.assertIn("all_fixed", payload)
 
+    def test_state_file_keeps_pinned_parse_contract_after_override_changes(self) -> None:
+        state_file = self._build_state()
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "story-automator.policy.json").write_text(
+            json.dumps({"steps": {"create": {"parse": {"schemaFile": "missing.json"}}}}),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"SUCCESS","story_created":true,"story_file":"x","summary":"ok","next_action":"proceed"}', 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(stdout.getvalue())["story_created"])
+
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"
         source_review = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator-review"
@@ -93,6 +111,32 @@ class OrchestratorParseTests(unittest.TestCase):
         (self.project_root / ".claude" / "skills" / "bmad-create-story" / "template.md").write_text("# template\n", encoding="utf-8")
         (self.project_root / ".claude" / "skills" / "bmad-dev-story" / "checklist.md").write_text("# checklist\n", encoding="utf-8")
         (self.project_root / ".claude" / "skills" / "bmad-qa-generate-e2e-tests" / "checklist.md").write_text("# checklist\n", encoding="utf-8")
+
+    def _build_state(self) -> Path:
+        output_dir = self.project_root / "_bmad-output" / "story-automator"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stdout = io.StringIO()
+        template = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "templates" / "state-document.md"
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), redirect_stdout(stdout):
+            cmd_build_state_doc(
+                [
+                    "--template",
+                    str(template),
+                    "--output-folder",
+                    str(output_dir),
+                    "--config-json",
+                    json.dumps(
+                        {
+                            "epic": "1",
+                            "epicName": "Epic 1",
+                            "storyRange": ["1.1"],
+                            "status": "READY",
+                            "aiCommand": "claude --dangerously-skip-permissions",
+                        }
+                    ),
+                ]
+            )
+        return Path(json.loads(stdout.getvalue())["path"])
 
 
 if __name__ == "__main__":

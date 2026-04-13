@@ -10,6 +10,7 @@ from pathlib import Path
 
 from story_automator.commands.orchestrator import cmd_orchestrator_helper
 from story_automator.commands.state import cmd_build_state_doc, cmd_validate_state
+from story_automator.commands.tmux import _build_cmd
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -67,6 +68,29 @@ class StatePolicyMetadataTests(unittest.TestCase):
             code = cmd_validate_state(["--state", str(legacy)])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["structure"], "ok")
+
+    def test_escalate_uses_pinned_snapshot_when_state_file_provided(self) -> None:
+        state_file = self._build_state()
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "story-automator.policy.json").write_text(
+            json.dumps({"workflow": {"repeat": {"review": {"maxCycles": 1}}}}),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["escalate", "review-loop", "cycles=2", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads(stdout.getvalue())["escalate"])
+
+    def test_build_cmd_does_not_treat_state_file_flag_as_prompt_text(self) -> None:
+        state_file = self._build_state()
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = _build_cmd(["review", "1.1", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        rendered = stdout.getvalue()
+        self.assertNotIn("--state-file", rendered)
 
     def _build_state(self) -> Path:
         stdout = io.StringIO()

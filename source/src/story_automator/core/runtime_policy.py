@@ -31,6 +31,18 @@ def load_effective_policy(project_root: str | None = None) -> dict[str, Any]:
     return policy
 
 
+def load_runtime_policy(project_root: str | None = None, state_file: str | Path | None = None) -> dict[str, Any]:
+    root = Path(project_root or get_project_root()).resolve()
+    resolved_state, source = resolve_policy_state_file(root, state_file)
+    if resolved_state:
+        try:
+            return load_policy_for_state(resolved_state, project_root=str(root))
+        except (FileNotFoundError, PolicyError):
+            if source == "explicit":
+                raise
+    return load_effective_policy(str(root))
+
+
 def snapshot_effective_policy(project_root: str | None = None) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     policy = load_effective_policy(str(root))
@@ -65,8 +77,12 @@ def load_policy_snapshot(
     actual_hash = md5_hex8(raw)
     if expected_hash and actual_hash != expected_hash:
         raise PolicyError(f"policy snapshot hash mismatch: expected {expected_hash}, got {actual_hash}")
-    policy = json.loads(raw)
+    try:
+        policy = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise PolicyError(f"policy json invalid: {path}") from exc
     _validate_policy_shape(policy)
+    _resolve_policy_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
     return policy
 
 
@@ -80,6 +96,26 @@ def load_policy_for_state(state_file: str | Path, project_root: str | None = Non
             raise PolicyError("state policy metadata incomplete")
         return load_policy_snapshot(snapshot_file, project_root=str(root), expected_hash=snapshot_hash)
     return load_effective_policy(str(root))
+
+
+def resolve_policy_state_file(project_root: str | Path | None = None, state_file: str | Path | None = None) -> tuple[str, str]:
+    root = Path(project_root or get_project_root()).resolve()
+    explicit = Path(state_file).expanduser() if state_file else None
+    if explicit:
+        return str(_resolve_state_path(root, explicit)), "explicit"
+    env_state = os.environ.get("STORY_AUTOMATOR_STATE_FILE", "").strip()
+    if env_state:
+        return str(_resolve_state_path(root, Path(env_state).expanduser())), "env"
+    marker = root / ".claude" / ".story-automator-active"
+    if marker.is_file():
+        try:
+            payload = _read_json(marker)
+        except PolicyError:
+            return "", ""
+        marker_state = str(payload.get("stateFile") or "").strip()
+        if marker_state:
+            return str(_resolve_state_path(root, Path(marker_state).expanduser())), "marker"
+    return "", ""
 
 
 def step_contract(policy: dict[str, Any], step: str) -> dict[str, Any]:
@@ -112,7 +148,10 @@ def bundled_skill_root(project_root: str | Path | None = None) -> Path:
 
 
 def _read_json(path: str | Path) -> dict[str, Any]:
-    payload = json.loads(read_text(path))
+    try:
+        payload = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise PolicyError(f"policy json invalid: {path}") from exc
     if not isinstance(payload, dict):
         raise PolicyError(f"policy json must be an object: {path}")
     return payload
@@ -142,25 +181,40 @@ def _validate_policy_shape(policy: dict[str, Any]) -> None:
     unknown_keys = sorted(set(policy) - VALID_TOP_LEVEL_KEYS)
     if unknown_keys:
         raise PolicyError(f"unknown top-level policy keys: {', '.join(unknown_keys)}")
+    snapshot = _expect_optional_dict(policy, "snapshot")
+    if "snapshot" in policy and "relativeDir" in snapshot and not isinstance(snapshot.get("relativeDir"), str):
+        raise PolicyError("snapshot.relativeDir must be a string")
+    workflow = _expect_optional_dict(policy, "workflow")
+    repeat = _expect_optional_nested_dict(workflow, "repeat", "workflow")
+    review = _expect_optional_nested_dict(repeat, "review", "workflow.repeat")
+    crash = _expect_optional_nested_dict(workflow, "crash", "workflow")
     steps = policy.get("steps")
     if not isinstance(steps, dict):
         raise PolicyError("steps must be an object")
     unknown_steps = sorted(set(steps) - VALID_STEP_NAMES)
     if unknown_steps:
         raise PolicyError(f"unknown step names: {', '.join(unknown_steps)}")
-    sequence = ((policy.get("workflow") or {}).get("sequence")) or []
+    sequence = (workflow.get("sequence")) or []
     if not isinstance(sequence, list) or not all(isinstance(item, str) for item in sequence):
         raise PolicyError("workflow.sequence must be a string array")
+    if "maxCycles" in review and not isinstance(review.get("maxCycles"), int):
+        raise PolicyError("workflow.repeat.review.maxCycles must be an integer")
+    if "maxRetries" in crash and not isinstance(crash.get("maxRetries"), int):
+        raise PolicyError("workflow.crash.maxRetries must be an integer")
     for step in sequence:
         if step not in steps:
             raise PolicyError(f"workflow.sequence references missing step: {step}")
     for name, contract in steps.items():
         if not isinstance(contract, dict):
             raise PolicyError(f"step contract must be an object: {name}")
+        assets = _expect_step_dict(contract, "assets", name)
+        _expect_step_dict(contract, "prompt", name)
+        _expect_step_dict(contract, "parse", name)
+        _expect_step_dict(contract, "success", name)
         verifier = str(((contract.get("success") or {}).get("verifier")) or "")
         if verifier not in VALID_VERIFIERS:
             raise PolicyError(f"invalid verifier for {name}: {verifier}")
-        required = ((contract.get("assets") or {}).get("required")) or []
+        required = (assets.get("required")) or []
         if not isinstance(required, list) or any(item not in VALID_ASSET_NAMES for item in required):
             raise PolicyError(f"invalid required assets for {name}")
 
@@ -248,7 +302,8 @@ def _resolve_data_path(path_value: str, *, project_root: Path, bundle_root: Path
 
 
 def _snapshot_relative_dir(policy: dict[str, Any]) -> str:
-    relative_dir = str((policy.get("snapshot") or {}).get("relativeDir") or "").strip()
+    snapshot = _expect_optional_dict(policy, "snapshot")
+    relative_dir = str(snapshot.get("relativeDir") or "").strip()
     if not relative_dir:
         raise PolicyError("snapshot.relativeDir missing")
     return relative_dir
@@ -263,3 +318,34 @@ def _display_path(path: Path, project_root: Path) -> str:
         return str(path.resolve().relative_to(project_root.resolve()))
     except ValueError:
         return str(path.resolve())
+
+
+def _resolve_state_path(project_root: Path, path: Path) -> Path:
+    return path if path.is_absolute() else project_root / path
+
+
+def _expect_optional_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise PolicyError(f"{key} must be an object")
+    return value
+
+
+def _expect_step_dict(contract: dict[str, Any], key: str, step: str) -> dict[str, Any]:
+    value = contract.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise PolicyError(f"{step}.{key} must be an object")
+    return value
+
+
+def _expect_optional_nested_dict(payload: dict[str, Any], key: str, label: str) -> dict[str, Any]:
+    value = payload.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise PolicyError(f"{label}.{key} must be an object")
+    return value

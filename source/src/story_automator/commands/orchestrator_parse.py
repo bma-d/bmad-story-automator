@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from story_automator.core.runtime_policy import load_effective_policy, step_contract
+from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, step_contract
 from story_automator.core.utils import COMMAND_TIMEOUT_EXIT, extract_json_line, print_json, read_text, run_cmd, trim_lines
 
 
@@ -14,6 +14,14 @@ def parse_output_action(args: list[str]) -> int:
         print('{"status":"error","reason":"output file not found or empty"}')
         return 1
     output_file, step = args[:2]
+    state_file = ""
+    idx = 2
+    while idx < len(args):
+        if args[idx] == "--state-file" and idx + 1 < len(args):
+            state_file = args[idx + 1]
+            idx += 2
+            continue
+        idx += 1
     try:
         content = read_text(output_file)
     except FileNotFoundError:
@@ -24,9 +32,9 @@ def parse_output_action(args: list[str]) -> int:
         return 1
     lines = trim_lines(content)[:150]
     try:
-        contract = step_contract(load_effective_policy(), step)
+        contract = step_contract(load_runtime_policy(state_file=state_file), step)
         parse_contract = _load_parse_contract(contract)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, PolicyError):
         print_json({"status": "error", "reason": "parse_contract_invalid"})
         return 1
     prompt = _build_parse_prompt(contract, parse_contract, "\n".join(lines))

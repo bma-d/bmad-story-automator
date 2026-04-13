@@ -241,6 +241,11 @@ verify_common_install() {
   assert_contains "outside .claude/skills/" "$review_dir/instructions.xml"
   assert_contains 'installed helper at `scripts/story-automator`' "$story_dir/data/scripts-reference.md"
   assert_not_contains "bin/" "$story_dir/data/monitoring-pattern.md"
+  assert_contains 'state-file "$state_file"' "$story_dir/data/code-review-loop.md"
+  assert_contains 'build-cmd review {story_id} --agent "$review_agent" --state-file "$state_file"' "$story_dir/data/code-review-loop.md"
+  assert_contains 'workflow review --story-key {story_id} --state-file "$state_file"' "$story_dir/data/code-review-loop.md"
+  assert_contains 'parse-output "$output_file" review --state-file "$state_file"' "$story_dir/data/code-review-loop.md"
+  assert_contains 'verify-code-review {story_id} --state-file "$state_file"' "$story_dir/data/code-review-loop.md"
 }
 
 verify_qa_prompts() {

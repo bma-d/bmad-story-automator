@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -22,7 +23,7 @@ DEFAULT_REVIEW_CONTRACT = {
 
 
 def resolve_success_contract(project_root: str, step: str, *, state_file: str | Path | None = None) -> dict[str, Any]:
-    policy = load_runtime_policy(project_root, state_file=state_file)
+    policy = load_runtime_policy(project_root, state_file=state_file, resolve_assets=False)
     success = step_contract(policy, step).get("success") or {}
     if not isinstance(success, dict):
         raise PolicyError(f"invalid success contract for {step}")
@@ -70,7 +71,7 @@ def create_story_artifact(
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     config = _success_config(contract)
     raw_glob = str(config.get("glob") or "_bmad-output/implementation-artifacts/{story_prefix}-*.md")
-    expected = int(config.get("expectedMatches", 1))
+    expected = _parse_int(config.get("expectedMatches", 1), "success.config.expectedMatches", minimum=0)
     pattern = _format_story_pattern(raw_glob, norm)
     matches = sorted(Path(project_root).glob(pattern))
     payload: dict[str, object] = {
@@ -138,17 +139,16 @@ def epic_complete(
     output_file: str = "",
     contract: dict[str, Any] | None = None,
 ) -> dict[str, object]:
-    norm = normalize_story_key(project_root, story_key)
-    if norm is None:
+    epic = _epic_identifier(project_root, story_key)
+    if not epic:
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
-    epic = norm.id.split(".", 1)[0]
     stories, done = sprint_status_epic(project_root, epic)
     if not stories:
         return {"verified": False, "epic": epic, "reason": "no_stories_found", "source": "sprint-status.yaml"}
     return {
         "verified": done == len(stories),
         "epic": epic,
-        "story": norm.key,
+        "story": story_key,
         "totalStories": len(stories),
         "doneStories": done,
         "source": "sprint-status.yaml",
@@ -193,13 +193,7 @@ def _load_review_contract(project_root: str, contract: dict[str, Any]) -> dict[s
     inline = _inline_review_contract(contract)
     merged.update(inline)
     _validate_review_contract(merged)
-    return {
-        "blockingSeverity": [str(value).strip() for value in merged["blockingSeverity"] if str(value).strip()],
-        "doneValues": [str(value).strip() for value in merged["doneValues"] if str(value).strip()],
-        "inProgressValues": [str(value).strip() for value in merged["inProgressValues"] if str(value).strip()],
-        "sourceOrder": [str(value).strip() for value in merged["sourceOrder"] if str(value).strip()],
-        "syncSprintStatus": bool(merged["syncSprintStatus"]),
-    }
+    return _sanitize_review_contract(merged)
 
 
 def _inline_review_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -225,9 +219,49 @@ def _validate_review_contract(contract: dict[str, Any]) -> None:
             raise PolicyError(f"review contract {key} must be a string array")
     if not isinstance(contract.get("syncSprintStatus"), bool):
         raise PolicyError("review contract syncSprintStatus must be a boolean")
-    invalid_sources = sorted({value for value in contract["sourceOrder"] if value not in ALLOWED_REVIEW_SOURCES})
+    if not _sanitize_string_list(contract["doneValues"]):
+        raise PolicyError("review contract doneValues must not be empty")
+    source_order = _sanitize_string_list(contract["sourceOrder"])
+    if not source_order:
+        raise PolicyError("review contract sourceOrder must not be empty")
+    invalid_sources = sorted({value for value in source_order if value not in ALLOWED_REVIEW_SOURCES})
     if invalid_sources:
         raise PolicyError(f"review contract sourceOrder contains unknown sources: {', '.join(invalid_sources)}")
+
+
+def _parse_int(value: Any, field: str, *, minimum: int | None = None) -> int:
+    if isinstance(value, bool):
+        raise PolicyError(f"{field} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise PolicyError(f"{field} must be an integer") from exc
+    if minimum is not None and parsed < minimum:
+        raise PolicyError(f"{field} must be >= {minimum}")
+    return parsed
+
+
+def _epic_identifier(project_root: str, story_key: str) -> str:
+    if re.fullmatch(r"\d+", story_key):
+        return story_key
+    norm = normalize_story_key(project_root, story_key)
+    if norm is None:
+        return ""
+    return norm.id.split(".", 1)[0]
+
+
+def _sanitize_review_contract(contract: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "blockingSeverity": _sanitize_string_list(contract["blockingSeverity"]),
+        "doneValues": _sanitize_string_list(contract["doneValues"]),
+        "inProgressValues": _sanitize_string_list(contract["inProgressValues"]),
+        "sourceOrder": _sanitize_string_list(contract["sourceOrder"]),
+        "syncSprintStatus": contract["syncSprintStatus"],
+    }
+
+
+def _sanitize_string_list(values: list[str]) -> list[str]:
+    return [value.strip() for value in values if value.strip()]
 
 
 VerifierFn = Callable[..., dict[str, object]]

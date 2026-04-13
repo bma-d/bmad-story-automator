@@ -18,7 +18,7 @@ class PolicyError(ValueError):
     pass
 
 
-def load_effective_policy(project_root: str | None = None) -> dict[str, Any]:
+def load_effective_policy(project_root: str | None = None, *, resolve_assets: bool = True) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     bundle_root = bundled_skill_root(root)
     bundled = _read_json(bundle_root / "data" / "orchestration-policy.json")
@@ -27,20 +27,28 @@ def load_effective_policy(project_root: str | None = None) -> dict[str, Any]:
     policy = _deep_merge(bundled, override)
     _apply_legacy_env(policy)
     _validate_policy_shape(policy)
-    _resolve_policy_paths(policy, project_root=root, bundle_root=bundle_root)
+    if resolve_assets:
+        _resolve_policy_paths(policy, project_root=root, bundle_root=bundle_root)
+    else:
+        _resolve_success_paths(policy, project_root=root, bundle_root=bundle_root)
     return policy
 
 
-def load_runtime_policy(project_root: str | None = None, state_file: str | Path | None = None) -> dict[str, Any]:
+def load_runtime_policy(
+    project_root: str | None = None,
+    state_file: str | Path | None = None,
+    *,
+    resolve_assets: bool = True,
+) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     resolved_state, source = resolve_policy_state_file(root, state_file)
     if resolved_state:
         try:
-            return load_policy_for_state(resolved_state, project_root=str(root))
+            return load_policy_for_state(resolved_state, project_root=str(root), resolve_assets=resolve_assets)
         except (FileNotFoundError, PolicyError):
             if source == "explicit":
                 raise
-    return load_effective_policy(str(root))
+    return load_effective_policy(str(root), resolve_assets=resolve_assets)
 
 
 def snapshot_effective_policy(project_root: str | None = None) -> dict[str, Any]:
@@ -66,6 +74,7 @@ def load_policy_snapshot(
     *,
     project_root: str | None = None,
     expected_hash: str = "",
+    resolve_assets: bool = True,
 ) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     path = Path(snapshot_file)
@@ -82,11 +91,19 @@ def load_policy_snapshot(
     except json.JSONDecodeError as exc:
         raise PolicyError(f"policy json invalid: {path}") from exc
     _validate_policy_shape(policy)
-    _resolve_policy_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
+    if resolve_assets:
+        _resolve_policy_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
+    else:
+        _resolve_success_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
     return policy
 
 
-def load_policy_for_state(state_file: str | Path, project_root: str | None = None) -> dict[str, Any]:
+def load_policy_for_state(
+    state_file: str | Path,
+    project_root: str | None = None,
+    *,
+    resolve_assets: bool = True,
+) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     fields = parse_simple_frontmatter(read_text(state_file))
     snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
@@ -94,8 +111,13 @@ def load_policy_for_state(state_file: str | Path, project_root: str | None = Non
     if snapshot_file or snapshot_hash:
         if not snapshot_file or not snapshot_hash:
             raise PolicyError("state policy metadata incomplete")
-        return load_policy_snapshot(snapshot_file, project_root=str(root), expected_hash=snapshot_hash)
-    return load_effective_policy(str(root))
+        return load_policy_snapshot(
+            snapshot_file,
+            project_root=str(root),
+            expected_hash=snapshot_hash,
+            resolve_assets=resolve_assets,
+        )
+    return load_effective_policy(str(root), resolve_assets=resolve_assets)
 
 
 def resolve_policy_state_file(project_root: str | Path | None = None, state_file: str | Path | None = None) -> tuple[str, str]:
@@ -233,6 +255,14 @@ def _resolve_policy_paths(policy: dict[str, Any], *, project_root: Path, bundle_
         if not schema_file:
             raise PolicyError(f"missing parse schema for {name}")
         parse["schemaPath"] = _resolve_data_path(schema_file, project_root=project_root, bundle_root=bundle_root)
+        success = contract.setdefault("success", {})
+        contract_file = str(success.get("contractFile") or "").strip()
+        if contract_file:
+            success["contractPath"] = _resolve_data_path(contract_file, project_root=project_root, bundle_root=bundle_root)
+
+
+def _resolve_success_paths(policy: dict[str, Any], *, project_root: Path, bundle_root: Path) -> None:
+    for contract in (policy.get("steps") or {}).values():
         success = contract.setdefault("success", {})
         contract_file = str(success.get("contractFile") or "").strip()
         if contract_file:

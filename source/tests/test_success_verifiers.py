@@ -63,11 +63,33 @@ class SuccessVerifierTests(unittest.TestCase):
                 contract={"contractPath": str(contract)},
             )
 
+    def test_review_completion_rejects_empty_contract_lists(self) -> None:
+        with self.assertRaises(PolicyError):
+            review_completion(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"doneValues": [], "sourceOrder": []},
+            )
+
+    def test_review_completion_rejects_whitespace_only_done_values(self) -> None:
+        with self.assertRaises(PolicyError):
+            review_completion(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"doneValues": ["   "], "sourceOrder": ["story-file"]},
+            )
+
     def test_epic_complete_checks_sprint_status(self) -> None:
         self._write_sprint_status("1-1-story-one: done\n1-2-story-two: done\n")
         payload = epic_complete(project_root=str(self.project_root), story_key="1.2")
         self.assertTrue(payload["verified"])
         self.assertEqual(payload["doneStories"], 2)
+
+    def test_epic_complete_accepts_bare_epic_id(self) -> None:
+        self._write_sprint_status("1-1-story-one: done\n1-2-story-two: done\n")
+        payload = epic_complete(project_root=str(self.project_root), story_key="1")
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["epic"], "1")
 
     def test_review_wrapper_uses_pinned_state_snapshot(self) -> None:
         self._write_story("1-2-example", status="approved")
@@ -87,6 +109,13 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertFalse(payload["verified"])
         self.assertEqual(payload["reason"], "workflow_not_complete")
 
+    def test_review_wrapper_ignores_unrelated_missing_assets(self) -> None:
+        shutil.rmtree(self.project_root / ".claude" / "skills" / "bmad-create-story")
+        self._write_story("1-2-example", status="done")
+        payload = verify_code_review_completion(str(self.project_root), "1.2")
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["source"], "story-file")
+
     def test_monitor_dispatch_uses_review_verifier_from_contract(self) -> None:
         self._write_story("1-2-example", status="done")
         result = _verify_monitor_completion(
@@ -99,6 +128,22 @@ class SuccessVerifierTests(unittest.TestCase):
         payload, verifier = result or ({}, "")
         self.assertEqual(verifier, "review_completion")
         self.assertTrue(payload["verified"])
+
+    def test_create_story_artifact_rejects_invalid_expected_matches(self) -> None:
+        with self.assertRaises(PolicyError):
+            create_story_artifact(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"config": {"expectedMatches": "abc"}},
+            )
+
+    def test_create_story_artifact_rejects_boolean_expected_matches(self) -> None:
+        with self.assertRaises(PolicyError):
+            create_story_artifact(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"config": {"expectedMatches": False}},
+            )
 
     def _build_state(self) -> Path:
         stdout = io.StringIO()

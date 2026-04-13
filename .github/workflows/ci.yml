@@ -43,7 +43,7 @@ jobs:
         run: PYTHONPATH=source/src python -m story_automator --help
 
       - name: Wrapper CLI help
-        run: source/bin/story-automator --help
+        run: source/scripts/story-automator --help
 
       - name: Installer smoke
         run: npm run test:smoke

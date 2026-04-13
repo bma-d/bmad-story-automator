@@ -13,6 +13,7 @@ PYTHONPATH=source/src python3 -m story_automator --help
 
 `npm run verify` expands to:
 
+- `npm run test:python`
 - `npm run pack:dry-run`
 - `npm run test:smoke`
 
@@ -25,13 +26,14 @@ The smoke suite validates:
 - required and optional dependency handling
 - legacy backup behavior
 - installed skill layout
+- installed runtime policy, prompt templates, and parse contracts
 - prompt-building behavior for Claude and Codex child sessions
 
 ## Repo Verification Flow
 
 ```mermaid
 flowchart TD
-    A["Edit installer, payload, or runtime"] --> B["Run python helper sanity checks"]
+    A["Edit installer, payload, or runtime"] --> B["Run npm run test:python"]
     B --> C["Run npm run test:smoke"]
     C --> D["Run npm run pack:dry-run"]
     D --> E["Run npm run verify"]

@@ -20,6 +20,8 @@ outputFolder: '{output_folder}/story-automator'
 
 **Meta-Context:** This orchestrator spawns and monitors other workflows (create-story, dev-story, automate, code-review, retrospective) in isolated T-Mux sessions. It tracks state for full resumability and escalates to the user only when autonomous decisions cannot be made.
 
+**Runtime Policy:** Machine settings live in `data/orchestration-policy.json`. Prompt contracts, parse contracts, retry budgets, and verifier selection should follow the pinned policy snapshot written at orchestration start.
+
 ---
 
 ## MULTI-EPIC SUPPORT

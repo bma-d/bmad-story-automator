@@ -6,6 +6,7 @@ import re
 import time
 from pathlib import Path
 
+from story_automator.core.runtime_policy import load_effective_policy, step_contract
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.utils import (
     atomic_write,
@@ -20,13 +21,6 @@ from story_automator.core.utils import (
     project_slug,
     read_text,
     run_cmd,
-)
-from story_automator.core.workflow_paths import (
-    create_story_workflow_paths,
-    dev_story_workflow_paths,
-    retrospective_workflow_paths,
-    review_workflow_paths,
-    testarch_automate_workflow_paths,
 )
 
 
@@ -191,12 +185,10 @@ def _build_cmd(args: list[str]) -> int:
     agent = agent or agent_type()
     story_prefix = story_id.replace(".", "-")
     root = get_project_root()
-    create_paths = create_story_workflow_paths(root)
-    dev_paths = dev_story_workflow_paths(root)
-    auto_paths = testarch_automate_workflow_paths(root)
-    review_paths = review_workflow_paths(root)
-    retro_paths = retrospective_workflow_paths(root)
-    auto_label = _automate_workflow_label(auto_paths.workflow)
+    if step not in {"create", "dev", "auto", "review", "retro"}:
+        print(f"Unknown step type: {step}", file=__import__("sys").stderr)
+        return 1
+    policy = load_effective_policy(root)
     ai_command = os.environ.get("AI_COMMAND")
     if ai_command and not os.environ.get("AI_AGENT"):
         cli = ai_command
@@ -204,92 +196,7 @@ def _build_cmd(args: list[str]) -> int:
         cli = agent_cli(agent)
     else:
         cli = "codex exec"
-    if step not in {"create", "dev", "auto", "review", "retro"}:
-        print(f"Unknown step type: {step}", file=__import__("sys").stderr)
-        return 1
-    create_extra = ""
-    if create_paths.instructions:
-        create_extra += f"Then read: {create_paths.instructions}\n"
-    if create_paths.template:
-        create_extra += f"Use template: {create_paths.template}\n"
-    if create_paths.checklist:
-        create_extra += f"Validate with: {create_paths.checklist}\n"
-
-    dev_extra = ""
-    if dev_paths.instructions:
-        dev_extra += f"Then read: {dev_paths.instructions}\n"
-    if dev_paths.checklist:
-        dev_extra += f"Validate with: {dev_paths.checklist}\n"
-
-    auto_extra = ""
-    if auto_paths.skill:
-        auto_extra += f"READ this skill first: {auto_paths.skill}\n"
-    if auto_paths.workflow:
-        auto_extra += f"READ this workflow file next: {auto_paths.workflow}\n"
-    if auto_paths.instructions:
-        auto_extra += f"Then read: {auto_paths.instructions}\n"
-    if auto_paths.checklist:
-        auto_extra += f"Validate with: {auto_paths.checklist}\n"
-
-    review_extra = ""
-    if review_paths.instructions:
-        review_extra += f"Then read: {review_paths.instructions}\n"
-    if review_paths.checklist:
-        review_extra += f"Validate with: {review_paths.checklist}\n"
-
-    retro_extra = ""
-    if retro_paths.instructions:
-        retro_extra += f"Then read: {retro_paths.instructions}\n"
-
-    prompt = {
-        "create": (
-            (
-                f"Execute the BMAD create-story workflow for story {story_id}.\n\n"
-                f"READ this skill first: {create_paths.skill}\n"
-                f"READ this workflow file next: {create_paths.workflow}\n"
-            )
-            + create_extra
-            + (
-            f"Create story file at: _bmad-output/implementation-artifacts/{story_prefix}-*.md\n\n"
-            f"Story ID: {story_id}\n\n#YOLO - Do NOT wait for user input."
-            )
-        ),
-        "dev": (
-            (
-                f"Execute the BMAD dev-story workflow for story {story_id}.\n\n"
-                f"READ this skill first: {dev_paths.skill}\n"
-                f"READ this workflow file next: {dev_paths.workflow}\n"
-            )
-            + dev_extra
-            + (
-            f"Story file: _bmad-output/implementation-artifacts/{story_prefix}-*.md\n"
-            "Implement all tasks marked [ ]. Run tests. Update checkboxes."
-            )
-        ),
-        "auto": (
-            (
-                f"Execute the BMAD {auto_label} workflow for story {story_id}.\n\n"
-            )
-            + auto_extra
-            + (
-            f"Story file: _bmad-output/implementation-artifacts/{story_prefix}-*.md\n"
-            "Auto-apply all discovered gaps in tests."
-            )
-        ),
-        "review": (
-            (
-                f"Execute the story-automator review workflow for story {story_id}.\n\n"
-                f"READ this skill first: {review_paths.skill}\n"
-                f"READ this workflow file next: {review_paths.workflow}\n"
-            )
-            + review_extra
-            + (
-            f"Story file: _bmad-output/implementation-artifacts/{story_prefix}-*.md\n"
-            f"Review implementation, find issues, fix them automatically. {extra or 'auto-fix all issues without prompting'}"
-            )
-        ),
-        "retro": _build_retro_prompt(story_id, retro_paths, retro_extra),
-    }[step]
+    prompt = _render_step_prompt(step_contract(policy, step), story_id, story_prefix, extra)
     escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
     if agent == "codex" and not ai_command:
         codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"
@@ -318,48 +225,28 @@ def skill_prefix(agent: str) -> str:
     return "none" if agent == "codex" else "bmad-"
 
 
-def _build_retro_prompt(epic_number: str, retro_paths, retro_extra: str) -> str:
-    return (
-        (
-            f"Execute the BMAD retrospective workflow for epic {epic_number}.\n\n"
-            f"READ this skill first: {retro_paths.skill}\n"
-            f"READ this workflow file next: {retro_paths.workflow}\n"
-        )
-        + retro_extra
-        + (
-            "Run the retrospective in #YOLO mode.\n"
-            "Assume the user will NOT provide any input to the retrospective directly.\n"
-            "For ALL prompts that expect user input, make reasonable autonomous decisions based on:\n"
-            "- Sprint status data\n"
-            "- Story files and their dev notes\n"
-            "- Previous retrospective if available\n"
-            "- Architecture and PRD documents\n\n"
-            "Key behaviors:\n"
-            "- When asked to confirm epic number: auto-confirm based on sprint-status\n"
-            "- When asked for observations: synthesize from story analysis\n"
-            "- When asked for decisions: make data-driven choices\n"
-            "- When presented menus: select the most appropriate option based on context\n"
-            '- Skip all "WAIT for user" instructions - continue autonomously\n\n'
-            "After the retrospective has run and created documents, you MUST:\n"
-            "1. Create a list of documentation that may need updates based on implementation learnings\n"
-            "2. For each doc in the list, verify whether updates are actually needed by:\n"
-            "   - Reading the current doc content\n"
-            "   - Comparing against actual implementation code\n"
-            "   - Checking for discrepancies between doc and code\n"
-            "3. Update docs that have verified discrepancies\n"
-            "4. Discard proposed updates where code matches docs\n\n"
-            "Focus on these doc types:\n"
-            "- Architecture decisions that changed during implementation\n"
-            "- API documentation that diverged from specs\n"
-            "- README files with outdated instructions\n"
-            "- Configuration documentation\n\n"
-            "EVERYTHING SHOULD BE AUTOMATED. THIS IS NOT A SESSION WHERE YOU SHOULD BE EXPECTING USER INPUT."
-        )
-    )
+def _render_step_prompt(contract: dict[str, object], story_id: str, story_prefix: str, extra_instruction: str) -> str:
+    prompt_cfg = contract.get("prompt") or {}
+    assets = (contract.get("assets") or {}).get("files") or {}
+    template = read_text(str(prompt_cfg.get("templatePath") or ""))
+    replacements = {
+        "{{story_id}}": story_id,
+        "{{story_prefix}}": story_prefix,
+        "{{label}}": str(contract.get("label") or ""),
+        "{{skill_line}}": _prompt_line("READ this skill first", str(assets.get("skill") or "")),
+        "{{workflow_line}}": _prompt_line("READ this workflow file next", str(assets.get("workflow") or "")),
+        "{{instructions_line}}": _prompt_line("Then read", str(assets.get("instructions") or "")),
+        "{{checklist_line}}": _prompt_line("Validate with", str(assets.get("checklist") or "")),
+        "{{template_line}}": _prompt_line("Use template", str(assets.get("template") or "")),
+        "{{extra_instruction}}": extra_instruction.strip() or str(prompt_cfg.get("defaultExtraInstruction") or ""),
+    }
+    for key, value in replacements.items():
+        template = template.replace(key, value)
+    return template
 
 
-def _automate_workflow_label(workflow_path: str) -> str:
-    return "qa-generate-e2e-tests" if "qa-generate-e2e-tests" in workflow_path else "qa-generate-e2e-tests"
+def _prompt_line(prefix: str, value: str) -> str:
+    return f"{prefix}: {value}\n" if value else ""
 
 
 def generate_session_name(step: str, epic: str, story_id: str, cycle: str = "") -> str:

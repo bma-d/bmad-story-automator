@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from story_automator.core.frontmatter import extract_last_action, find_frontmatter_value, find_frontmatter_value_case, parse_frontmatter
+from story_automator.core.runtime_policy import crash_max_retries, load_effective_policy, review_max_cycles
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.sprint import sprint_status_epic, sprint_status_get
 from story_automator.core.story_keys import normalize_story_key, sprint_status_file
@@ -244,6 +245,10 @@ def _state_summary(args: list[str]) -> int:
             "currentStep": find_frontmatter_value(args[0], "currentStep"),
             "status": find_frontmatter_value(args[0], "status"),
             "lastUpdated": find_frontmatter_value(args[0], "lastUpdated"),
+            "policyVersion": find_frontmatter_value(args[0], "policyVersion"),
+            "policySnapshotFile": find_frontmatter_value(args[0], "policySnapshotFile"),
+            "policySnapshotHash": find_frontmatter_value(args[0], "policySnapshotHash"),
+            "legacyPolicy": find_frontmatter_value(args[0], "legacyPolicy"),
             "lastAction": extract_last_action(args[0]),
         }
     )
@@ -278,9 +283,10 @@ def _state_update(args: list[str]) -> int:
 def _escalate(args: list[str]) -> int:
     trigger = args[0] if args else ""
     context = args[1] if len(args) > 1 else ""
+    policy = load_effective_policy(get_project_root())
     if trigger == "review-loop":
         cycles = _parse_context_int(context, "cycles")
-        limit = int(os.environ.get("MAX_REVIEW_CYCLES", "5"))
+        limit = review_max_cycles(policy)
         if cycles >= limit:
             print_json({"escalate": True, "reason": f"Review loop exceeded max cycles ({cycles}/{limit})"})
         else:
@@ -288,7 +294,7 @@ def _escalate(args: list[str]) -> int:
         return 0
     if trigger == "session-crash":
         retries = _parse_context_int(context, "retries")
-        limit = int(os.environ.get("MAX_CRASH_RETRIES", "2"))
+        limit = crash_max_retries(policy)
         if retries >= limit:
             print_json({"escalate": True, "reason": f"Session crashed after {retries} retries"})
         else:

@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+import io
+import json
+import shutil
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest.mock import patch
+
+from story_automator.commands.orchestrator_parse import parse_output_action
+from story_automator.core.utils import CommandResult
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class OrchestratorParseTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project_root = Path(self.tmp.name)
+        self._install_bundle()
+        self._install_required_skills()
+        self.output_file = self.project_root / "session.txt"
+        self.output_file.write_text("session output\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_parse_schema_loads_from_step_contract(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"SUCCESS","story_created":true,"story_file":"x","summary":"ok","next_action":"proceed"}', 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["story_created"])
+
+    def test_invalid_schema_file_rejected(self) -> None:
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True)
+        (override_dir / "story-automator.policy.json").write_text(
+            json.dumps({"steps": {"create": {"parse": {"schemaFile": "missing.json"}}}}),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "parse_contract_invalid")
+
+    def test_invalid_child_json_rejected(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult("not json", 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "sub-agent returned invalid json")
+
+    def test_output_shape_remains_compatible(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"SUCCESS","issues_found":{"critical":0,"high":0,"medium":1,"low":0},"all_fixed":true,"summary":"ok","next_action":"proceed"}', 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "review"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertIn("issues_found", payload)
+        self.assertIn("all_fixed", payload)
+
+    def _install_bundle(self) -> None:
+        source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"
+        source_review = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator-review"
+        target_root = self.project_root / ".claude" / "skills"
+        target_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_skill, target_root / "bmad-story-automator")
+        shutil.copytree(source_review, target_root / "bmad-story-automator-review")
+
+    def _install_required_skills(self) -> None:
+        for name in ("bmad-create-story", "bmad-dev-story", "bmad-retrospective", "bmad-qa-generate-e2e-tests"):
+            skill_dir = self.project_root / ".claude" / "skills" / name
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
+            (skill_dir / "workflow.md").write_text(f"# {name}\n", encoding="utf-8")
+        (self.project_root / ".claude" / "skills" / "bmad-create-story" / "discover-inputs.md").write_text("# discover\n", encoding="utf-8")
+        (self.project_root / ".claude" / "skills" / "bmad-create-story" / "checklist.md").write_text("# checklist\n", encoding="utf-8")
+        (self.project_root / ".claude" / "skills" / "bmad-create-story" / "template.md").write_text("# template\n", encoding="utf-8")
+        (self.project_root / ".claude" / "skills" / "bmad-dev-story" / "checklist.md").write_text("# checklist\n", encoding="utf-8")
+        (self.project_root / ".claude" / "skills" / "bmad-qa-generate-e2e-tests" / "checklist.md").write_text("# checklist\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    unittest.main()

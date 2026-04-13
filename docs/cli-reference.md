@@ -87,7 +87,7 @@ These support saved presets and generated agent plans.
 - `stop-hook`
 - `list-sessions`
 - `commit-story`
-- `validate-story-creation`
+- `validate-story-creation` (legacy compatibility wrapper; prefer `orchestrator-helper verify-step create`)
 
 ## Typical Patterns
 
@@ -115,6 +115,12 @@ session="$("$scripts" tmux-wrapper spawn review 1 1.2 --agent claude --command "
 
 ```bash
 "$scripts" orchestrator-helper verify-step create 1.2 --state-file "$state_file"
+```
+
+Legacy compatibility:
+
+```bash
+"$scripts" validate-story-creation check 1.2 --state-file "$state_file"
 ```
 
 ## Read Next

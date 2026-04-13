@@ -116,11 +116,8 @@ def load_policy_for_state(
 ) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     fields = parse_simple_frontmatter(read_text(state_file))
-    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
-    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
-    if snapshot_file or snapshot_hash:
-        if not snapshot_file or not snapshot_hash:
-            raise PolicyError("state policy metadata incomplete")
+    snapshot_file, snapshot_hash, legacy_mode = _state_policy_mode(fields)
+    if not legacy_mode:
         return load_policy_snapshot(
             snapshot_file,
             project_root=str(root),
@@ -362,6 +359,22 @@ def _display_path(path: Path, project_root: Path) -> str:
 
 def _resolve_state_path(project_root: Path, path: Path) -> Path:
     return path if path.is_absolute() else project_root / path
+
+
+def _state_policy_mode(fields: dict[str, Any]) -> tuple[str, str, bool]:
+    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
+    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
+    policy_version = str(fields.get("policyVersion") or "").strip()
+    legacy_policy = str(fields.get("legacyPolicy") or "").strip().lower()
+    if snapshot_file or snapshot_hash:
+        if not snapshot_file or not snapshot_hash:
+            raise PolicyError("state policy metadata incomplete")
+        return snapshot_file, snapshot_hash, False
+    if legacy_policy == "true":
+        return "", "", True
+    if legacy_policy == "false" or policy_version:
+        raise PolicyError("state policy snapshot missing")
+    return "", "", True
 
 
 def _expect_optional_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:

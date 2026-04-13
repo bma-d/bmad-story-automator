@@ -248,9 +248,10 @@ def _state_summary(args: list[str]) -> int:
     fields = parse_simple_frontmatter(read_text(args[0]))
     snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
     snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
+    policy_version = str(fields.get("policyVersion") or "").strip()
     legacy_policy = str(fields.get("legacyPolicy") or "").strip().lower()
     if legacy_policy not in {"true", "false"}:
-        legacy_policy = "true" if not snapshot_file and not snapshot_hash else "false"
+        legacy_policy = "true" if not snapshot_file and not snapshot_hash and not policy_version else "false"
     print_json(
         {
             "ok": True,

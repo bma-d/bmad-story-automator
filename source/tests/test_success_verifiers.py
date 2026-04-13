@@ -11,6 +11,7 @@ from pathlib import Path
 from story_automator.commands.orchestrator import cmd_orchestrator_helper
 from story_automator.commands.state import cmd_build_state_doc
 from story_automator.commands.tmux import _verify_monitor_completion
+from story_automator.commands.validate_story_creation import cmd_validate_story_creation
 from story_automator.core.review_verify import verify_code_review_completion
 from story_automator.core.runtime_policy import PolicyError
 from story_automator.core.success_verifiers import create_story_artifact, epic_complete, review_completion
@@ -160,6 +161,30 @@ class SuccessVerifierTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertFalse(payload["verified"])
         self.assertEqual(payload["reason"], "unexpected_story_artifact_count")
+
+    def test_validate_story_creation_check_uses_shared_verifier(self) -> None:
+        self._write_story("1-2-example", status="draft")
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["valid"])
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["expected"], 1)
+
+    def test_validate_story_creation_check_uses_pinned_snapshot(self) -> None:
+        self._write_story("1-2-example", status="draft")
+        state_file = self._build_state()
+        self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": 2}}}}})
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["valid"])
+        self.assertEqual(payload["expected"], 1)
 
     def test_create_story_artifact_rejects_invalid_expected_matches(self) -> None:
         with self.assertRaises(PolicyError):

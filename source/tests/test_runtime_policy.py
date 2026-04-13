@@ -144,6 +144,15 @@ class RuntimePolicyTests(unittest.TestCase):
         with self.assertRaises(PolicyError):
             load_runtime_policy(str(self.project_root))
 
+    def test_new_state_without_snapshot_metadata_is_rejected(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\nepic: \"1\"\nepicName: \"Epic 1\"\nstoryRange: [\"1.1\"]\nstatus: \"READY\"\nlastUpdated: \"2026-04-13T00:00:00Z\"\naiCommand: \"claude\"\npolicyVersion: 1\nlegacyPolicy: false\n---\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PolicyError, "state policy snapshot missing"):
+            load_runtime_policy(str(self.project_root), state_file=str(state_file))
+
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"
         source_review = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator-review"

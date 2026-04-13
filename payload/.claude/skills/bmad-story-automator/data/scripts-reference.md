@@ -12,9 +12,10 @@ All operations use the installed helper at `scripts/story-automator` (usually vi
 | `$scripts codex-status-check` | Codex-specific status with heartbeat (v2.4.0) |
 | `$scripts heartbeat-check` | CPU-based process heartbeat detection |
 | `$scripts orchestrator-helper` | Sprint-status, parsing, markers |
+| `$scripts orchestrator-helper verify-step` | Shared success verifier checks per step |
 | `$scripts orchestrator-helper agents-build` | Deterministic agents file generation |
 | `$scripts orchestrator-helper agents-resolve` | Agent lookup per story/task via state file or direct agents file |
-| `$scripts validate-story-creation` | Story file count validation |
+| `$scripts validate-story-creation` | Legacy story file count validation |
 | `$scripts commit-story` | Deterministic git commit with JSON output |
 
 ## Usage Pattern

@@ -127,26 +127,24 @@ If multiple logs exist, run one grep/regex pass across all log files and forward
 **Apply retry/fallback pattern from `{retryStrategy}`:** Up to 5 attempts, alternating agents, network-aware delays.
 
 ```bash
-before=$("$scripts" validate-story-creation count {story_id})
 # Retry loop: see {retryStrategy}
 session=$("$scripts" tmux-wrapper spawn create {epic} {story_id} \
   --agent "$current_agent" \
-  --command "$("$scripts" tmux-wrapper build-cmd create {story_id} --agent "$current_agent")")
+  --command "$("$scripts" tmux-wrapper build-cmd create {story_id} --agent "$current_agent" --state-file "$state_file")")
 result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
 "$scripts" tmux-wrapper kill "$session"
-after=$("$scripts" validate-story-creation count {story_id})
-validation=$("$scripts" validate-story-creation check {story_id} --before $before --after $after)
+validation=$("$scripts" orchestrator-helper verify-step create {story_id} --state-file "$state_file")
 ```
 
-- If `validation.valid == true`:
+- If `validation.verified == true`:
   ```bash
   # Update Story Progress: mark create-story done
   tmp_state=$(mktemp)
   sed "s/^| ${story_id} |.*$/| ${story_id} | done | - | - | - | - | in-progress |/" "$state_file" > "$tmp_state" && mv "$tmp_state" "$state_file"
   ```
   → proceed to B
-- If `validation.valid == false` AND attempts < 5 → retry with next agent (see `{retryStrategy}`)
-- If `validation.valid == false` AND attempts == 5 → escalate (all retries exhausted)
+- If `validation.verified == false` AND attempts < 5 → retry with next agent (see `{retryStrategy}`)
+- If `validation.verified == false` AND attempts == 5 → escalate (all retries exhausted)
 
 ### B. Dev Story
 

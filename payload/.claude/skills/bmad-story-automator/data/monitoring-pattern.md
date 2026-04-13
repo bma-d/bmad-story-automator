@@ -105,17 +105,11 @@ next_action=$(echo "$parsed" | jq -r '.next_action')
 "$scripts" orchestrator-helper escalate <trigger> <context>
 ```
 
-### $scripts validate-story-creation
+### $scripts orchestrator-helper verify-step
 
 ```bash
-# Count before session
-before=$("$scripts" validate-story-creation count 5.3)
-
-# ... run create-story session ...
-
-# Count after and validate
-after=$("$scripts" validate-story-creation count 5.3)
-"$scripts" validate-story-creation check 5.3 --before $before --after $after
+# Validate create-story via the shared success verifier
+"$scripts" orchestrator-helper verify-step create 5.3 --state-file "$state_file"
 ```
 
 ---

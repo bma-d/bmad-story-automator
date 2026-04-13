@@ -8,6 +8,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
+from story_automator.commands.orchestrator import cmd_orchestrator_helper
 from story_automator.commands.state import cmd_build_state_doc
 from story_automator.commands.tmux import _verify_monitor_completion
 from story_automator.core.review_verify import verify_code_review_completion
@@ -128,6 +129,28 @@ class SuccessVerifierTests(unittest.TestCase):
         payload, verifier = result or ({}, "")
         self.assertEqual(verifier, "review_completion")
         self.assertTrue(payload["verified"])
+
+    def test_verify_step_create_uses_shared_verifier(self) -> None:
+        self._write_story("1-2-example", status="draft")
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["verify-step", "create", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["source"], "artifact_glob")
+
+    def test_verify_step_create_uses_pinned_snapshot(self) -> None:
+        self._write_story("1-2-example", status="draft")
+        state_file = self._build_state()
+        self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": 2}}}}})
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["verify-step", "create", "1.2", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["expectedMatches"], 1)
 
     def test_create_story_artifact_rejects_invalid_expected_matches(self) -> None:
         with self.assertRaises(PolicyError):

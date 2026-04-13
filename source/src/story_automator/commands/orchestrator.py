@@ -6,8 +6,9 @@ import re
 from pathlib import Path
 
 from story_automator.core.frontmatter import extract_last_action, find_frontmatter_value, find_frontmatter_value_case, parse_frontmatter
-from story_automator.core.runtime_policy import crash_max_retries, load_runtime_policy, review_max_cycles
+from story_automator.core.runtime_policy import PolicyError, crash_max_retries, load_runtime_policy, review_max_cycles
 from story_automator.core.review_verify import verify_code_review_completion
+from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
 from story_automator.core.sprint import sprint_status_epic, sprint_status_get
 from story_automator.core.story_keys import normalize_story_key, sprint_status_file
 from story_automator.core.utils import (
@@ -51,6 +52,7 @@ def cmd_orchestrator_helper(args: list[str]) -> int:
         "commit-ready": _commit_ready,
         "normalize-key": _normalize_key,
         "story-file-status": _story_file_status,
+        "verify-step": _verify_step,
         "verify-code-review": _verify_code_review,
         "check-epic-complete": check_epic_complete_action,
         "get-epic-stories": get_epic_stories_action,
@@ -86,6 +88,7 @@ def _usage(code: int) -> int:
     print("  commit-ready <story_id>", file=target)
     print("  normalize-key <input> [--to id|key|prefix|json]", file=target)
     print("  story-file-status <story>", file=target)
+    print("  verify-step <step> <story_or_epic> [--state-file path] [--output-file path]", file=target)
     print("  verify-code-review <story>", file=target)
     print("  check-epic-complete <epic> <story> [--state-file path]", file=target)
     print("  get-epic-stories <epic> [--state-file path]", file=target)
@@ -384,6 +387,37 @@ def _verify_code_review(args: list[str]) -> int:
         if arg == "--state-file" and idx + 1 < len(tail):
             state_file = tail[idx + 1]
     payload = verify_code_review_completion(get_project_root(), args[0], state_file=state_file or None)
+    print_json(payload)
+    return 0 if bool(payload.get("verified")) else 1
+
+
+def _verify_step(args: list[str]) -> int:
+    if len(args) < 2:
+        print_json({"verified": False, "reason": "step_and_story_required"})
+        return 1
+    step, story_key = args[:2]
+    state_file = ""
+    output_file = ""
+    tail = args[2:]
+    for idx, arg in enumerate(tail):
+        if arg == "--state-file" and idx + 1 < len(tail):
+            state_file = tail[idx + 1]
+        elif arg == "--output-file" and idx + 1 < len(tail):
+            output_file = tail[idx + 1]
+    try:
+        contract = resolve_success_contract(get_project_root(), step, state_file=state_file or None)
+        verifier = str(contract.get("verifier") or "").strip()
+        if not verifier:
+            raise PolicyError(f"missing success verifier for {step}")
+        payload = run_success_verifier(
+            verifier,
+            project_root=get_project_root(),
+            story_key=story_key,
+            output_file=output_file,
+            contract=contract,
+        )
+    except (FileNotFoundError, PolicyError) as exc:
+        payload = {"verified": False, "step": step, "input": story_key, "reason": "verifier_contract_invalid", "error": str(exc)}
     print_json(payload)
     return 0 if bool(payload.get("verified")) else 1
 

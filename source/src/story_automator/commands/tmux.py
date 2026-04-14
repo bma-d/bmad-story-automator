@@ -784,6 +784,8 @@ def _verify_monitor_completion(
     verifier_name = str(contract.get("verifier") or "").strip()
     if not verifier_name:
         return None
+    if verifier_name in {"create_story_artifact", "review_completion", "epic_complete"} and not story_key.strip():
+        return None
     try:
         result = run_success_verifier(
             verifier_name,

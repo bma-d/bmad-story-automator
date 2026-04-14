@@ -237,6 +237,20 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse(json.loads(stdout.getvalue())["escalate"])
 
+    def test_escalate_returns_json_when_state_snapshot_is_invalid(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"missing.json\"\npolicySnapshotHash: \"deadbeef\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["escalate", "review-loop", "cycles=1", "--state-file", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["escalate"])
+        self.assertIn("policy snapshot missing", payload["reason"])
+
     def test_build_cmd_does_not_treat_state_file_flag_as_prompt_text(self) -> None:
         state_file = self._build_state()
         stdout = io.StringIO()

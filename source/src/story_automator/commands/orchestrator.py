@@ -312,7 +312,11 @@ def _escalate(args: list[str]) -> int:
             idx += 2
             continue
         idx += 1
-    policy = load_runtime_policy(get_project_root(), state_file=state_file)
+    try:
+        policy = load_runtime_policy(get_project_root(), state_file=state_file)
+    except (FileNotFoundError, PolicyError) as exc:
+        print_json({"escalate": True, "reason": str(exc)})
+        return 0
     if trigger == "review-loop":
         cycles = _parse_context_int(context, "cycles")
         limit = review_max_cycles(policy)

@@ -77,6 +77,11 @@ class RuntimePolicyTests(unittest.TestCase):
         self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 2)
         self.assertEqual(policy["workflow"]["crash"]["maxRetries"], 4)
 
+    def test_invalid_legacy_env_value_raises_policy_error(self) -> None:
+        with patch.dict("os.environ", {"MAX_REVIEW_CYCLES": "nope"}, clear=False):
+            with self.assertRaisesRegex(PolicyError, "MAX_REVIEW_CYCLES must be an integer"):
+                load_effective_policy(str(self.project_root))
+
     def test_malformed_override_json_raises_policy_error(self) -> None:
         override_dir = self.project_root / "_bmad" / "bmm"
         override_dir.mkdir(parents=True, exist_ok=True)

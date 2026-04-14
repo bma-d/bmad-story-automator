@@ -233,9 +233,22 @@ def _apply_legacy_env(policy: dict[str, Any]) -> None:
     review_cycles = os.environ.get("MAX_REVIEW_CYCLES")
     crash_retries = os.environ.get("MAX_CRASH_RETRIES")
     if review_cycles:
-        policy.setdefault("workflow", {}).setdefault("repeat", {}).setdefault("review", {})["maxCycles"] = int(review_cycles)
+        policy.setdefault("workflow", {}).setdefault("repeat", {}).setdefault("review", {})["maxCycles"] = _legacy_env_int(
+            "MAX_REVIEW_CYCLES",
+            review_cycles,
+        )
     if crash_retries:
-        policy.setdefault("workflow", {}).setdefault("crash", {})["maxRetries"] = int(crash_retries)
+        policy.setdefault("workflow", {}).setdefault("crash", {})["maxRetries"] = _legacy_env_int(
+            "MAX_CRASH_RETRIES",
+            crash_retries,
+        )
+
+
+def _legacy_env_int(name: str, raw: str) -> int:
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise PolicyError(f"{name} must be an integer") from exc
 
 
 def _validate_policy_shape(policy: dict[str, Any]) -> None:

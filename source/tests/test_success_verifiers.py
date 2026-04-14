@@ -131,6 +131,27 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertEqual(verifier, "review_completion")
         self.assertTrue(payload["verified"])
 
+    def test_monitor_dispatch_skips_story_keyed_verifier_without_story_key(self) -> None:
+        result = _verify_monitor_completion(
+            "review",
+            project_root=str(self.project_root),
+            story_key="",
+            output_file="/tmp/session.txt",
+        )
+        self.assertIsNone(result)
+
+    def test_monitor_dispatch_allows_session_exit_without_story_key(self) -> None:
+        result = _verify_monitor_completion(
+            "dev",
+            project_root=str(self.project_root),
+            story_key="",
+            output_file="/tmp/session.txt",
+        )
+        self.assertIsNotNone(result)
+        payload, verifier = result or ({}, "")
+        self.assertEqual(verifier, "session_exit")
+        self.assertTrue(payload["verified"])
+
     def test_verify_step_create_uses_shared_verifier(self) -> None:
         self._write_story("1-2-example", status="draft")
         stdout = io.StringIO()

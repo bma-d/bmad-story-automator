@@ -5,9 +5,12 @@ import stat
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from story_automator.core.tmux_runtime import (
+    PaneSnapshot,
+    _check_prompt_visible,
     cleanup_stale_terminal_artifacts,
     command_exists,
     load_session_state,
@@ -17,6 +20,7 @@ from story_automator.core.tmux_runtime import (
     session_status,
     spawn_session,
     tmux_kill_session,
+    _runner_session_status,
     _terminal_runner_status,
 )
 
@@ -90,6 +94,70 @@ class TmuxRuntimeIntegrationTests(unittest.TestCase):
 
 
 class TmuxRuntimeStateTests(unittest.TestCase):
+    def test_check_prompt_visible_accepts_claude_prompt_before_status_panel(self) -> None:
+        capture = "\n".join(
+            [
+                "",
+                "✻ Baked for 4m 55s",
+                "",
+                "────────────────────────────────────────",
+                "❯ ",
+                "────────────────────────────────────────",
+                "  Model: Sonnet 4.6",
+                "  Session: 4m",
+                "  bypass permissions on",
+            ]
+        )
+        with mock.patch("story_automator.core.tmux_runtime._capture_text", return_value=capture):
+            self.assertEqual(_check_prompt_visible("sa-test"), "true")
+
+    def test_runner_claude_prompt_completion_maps_to_completed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session = "sa-test-claude-complete"
+            paths = session_paths(session, temp_dir)
+            save_session_state(
+                paths.state,
+                {
+                    "schemaVersion": 1,
+                    "session": session,
+                    "agent": "claude",
+                    "projectRoot": temp_dir,
+                    "paneId": "%1",
+                    "panePid": 1,
+                    "runnerPid": 1,
+                    "childPid": 2,
+                    "commandFile": str(paths.command),
+                    "outputHint": str(paths.output),
+                    "createdAt": "2026-04-14T18:43:59Z",
+                    "startedAt": "2026-04-14T18:43:59Z",
+                    "finishedAt": "",
+                    "updatedAt": "2026-04-14T18:44:00Z",
+                    "lifecycle": "running",
+                    "result": "",
+                    "exitCode": "",
+                    "failureReason": "",
+                },
+            )
+            capture = "Story created.\n\nBaked for 4m 55s\n\n❯ "
+            with (
+                mock.patch("story_automator.core.tmux_runtime._capture_text", return_value=capture),
+                mock.patch("story_automator.core.tmux_runtime._check_prompt_visible", return_value="true"),
+                mock.patch(
+                    "story_automator.core.tmux_runtime._pane_snapshot",
+                    return_value=PaneSnapshot(exists=True, pane_id="%1", pane_pid=1, dead=False, dead_status=None),
+                ),
+                mock.patch("story_automator.core.tmux_runtime._pid_alive", side_effect=lambda pid: pid in {1, 2}),
+            ):
+                status = _runner_session_status(session, full=False, codex=False, project_root=temp_dir)
+
+            self.assertEqual(status["session_state"], "completed")
+            self.assertEqual(status["status"], "idle")
+
+            state = load_session_state(paths.state)
+            self.assertEqual(state["lifecycle"], "finished")
+            self.assertEqual(state["result"], "success")
+            self.assertEqual(state["exitCode"], 0)
+
     def test_launch_never_succeeded_maps_to_stuck(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             session = "sa-test-launch-stuck"

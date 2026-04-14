@@ -38,6 +38,9 @@ This repo packages the installable workflow payload plus the Python helper sourc
 This bundle supports:
 - Claude
 - Codex-monitored child sessions inside the orchestrator
+- modern BMAD skill locations for dependency workflows:
+  - `.claude/skills/...`
+  - `.agents/skills/...`
 - current BMAD layout: `_bmad/bmm/4-implementation/...`
 - legacy BMAD layout: `_bmad/bmm/workflows/4-implementation/...`
 
@@ -63,9 +66,11 @@ It also:
 - installs the Claude command `bmad-bmm-story-automator`
 - removes the older `bmad-bmm-story-automator-py` command if present
 - creates missing Claude dependency commands for `create-story`, `dev-story`, `story-automator-review`, `retrospective` without overwriting existing project-specific wrappers
+  - dependency resolution order for Claude wrappers: `.claude/skills`, `.agents/skills`, current `_bmad/bmm/4-implementation`, legacy `_bmad/bmm/workflows/4-implementation`
+  - dependency resolution order for Codex prompts: `.agents/skills`, `.claude/skills`, current `_bmad/bmm/4-implementation`, legacy `_bmad/bmm/workflows/4-implementation`
 - creates automate wrappers only if a compatible automate workflow already exists in the target project:
+  - `bmad-bmm-qa-generate-e2e-tests` plus the legacy compatibility alias when the fresh BMAD `qa-generate-e2e-tests` workflow is present under `.claude/skills`, `.agents/skills`, or `_bmad/bmm/...`
   - `bmad-tea-testarch-automate` for legacy TEA `testarch-automate`
-  - `bmad-bmm-qa-generate-e2e-tests` plus the legacy compatibility alias when the fresh BMAD `qa-generate-e2e-tests` workflow is present
 
 ## Requirements
 
@@ -75,7 +80,7 @@ Host requirements:
 - Claude Code
 - macOS or Linux
 
-If the automate workflow is missing, install still succeeds. In that case run `story-automator` with `Skip Automate = true`. Compatible automate sources: legacy TEA `testarch-automate` or fresh BMAD `qa-generate-e2e-tests`.
+If the automate workflow is missing, install still succeeds. In that case run `story-automator` with `Skip Automate = true`. Compatible automate sources: legacy TEA `testarch-automate` or fresh BMAD `qa-generate-e2e-tests` under either skill-based or `_bmad` layouts.
 
 ## Package Layout
 
@@ -104,12 +109,14 @@ review_dir=$(find _bmad/bmm -maxdepth 3 -type d \( -name 'bmad-story-automator-r
 "$story_dir/bin/story-automator" --help
 grep -n "name: story-automator" "$story_dir/workflow.md"
 grep -n "0 CRITICAL issues remain after fixes" "$review_dir/instructions.xml"
+grep -nE '\.claude/skills|\.agents/skills|_bmad/bmm/4-implementation|_bmad/bmm/workflows/4-implementation' .claude/commands/bmad-bmm-create-story.md
 ```
 
 Expected:
 - command help output from `story-automator`
 - workflow name `story-automator`
 - a matching `CRITICAL issues remain` line in `story-automator-review/instructions.xml`
+- create-story wrapper references the dependency workflow from one of the supported skill or `_bmad` locations
 
 ## Publish To npm
 

@@ -8,9 +8,11 @@ usage() {
   cat <<'EOF'
 Usage: ./install.sh <bmad-project-root>
 
-Installs the portable payload bundle into:
-  _bmad/bmm/workflows/4-implementation/story-automator
-  _bmad/bmm/workflows/4-implementation/story-automator-review
+Installs the portable payload bundle into the target BMAD implementation root:
+  current: _bmad/bmm/4-implementation/bmad-story-automator
+  current: _bmad/bmm/4-implementation/bmad-story-automator-review
+  legacy:  _bmad/bmm/workflows/4-implementation/story-automator
+  legacy:  _bmad/bmm/workflows/4-implementation/story-automator-review
 
 Also ensures Claude command wrappers exist in:
   .claude/commands
@@ -117,6 +119,49 @@ resolve_workflow_path() {
   return 1
 }
 
+preferred_skill_roots() {
+  case "${1:-}" in
+    claude)
+      printf '%s\n' ".claude/skills" ".agents/skills"
+      ;;
+    codex)
+      printf '%s\n' ".agents/skills" ".claude/skills"
+      ;;
+    *)
+      printf '%s\n' ".agents/skills" ".claude/skills"
+      ;;
+  esac
+}
+
+resolve_skill_asset_path() {
+  local agent="$1"
+  local skill_name="$2"
+  shift 2
+
+  local file_names=()
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--" ]; then
+      shift
+      break
+    fi
+    file_names+=("$1")
+    shift
+  done
+
+  local root file_name candidate
+  while IFS= read -r root; do
+    for file_name in "${file_names[@]}"; do
+      candidate="$root/$skill_name/$file_name"
+      if [ -f "$TARGET_ROOT/$candidate" ]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+  done < <(preferred_skill_roots "$agent")
+
+  resolve_workflow_path "$@"
+}
+
 ensure_command_current() {
   local file="$1"
   local name="$2"
@@ -193,7 +238,11 @@ if [ -f "$TARGET_ROOT/_bmad/core/tasks/workflow.xml" ]; then
   COMMAND_MODE="workflow-xml"
 fi
 
-CREATE_STORY_PATH="$(resolve_workflow_path \
+CREATE_STORY_PATH="$(resolve_skill_asset_path "claude" "bmad-create-story" "workflow.md" "workflow.yaml" -- \
+  ".claude/skills/bmad-create-story/workflow.md" \
+  ".claude/skills/bmad-create-story/workflow.yaml" \
+  ".agents/skills/bmad-create-story/workflow.md" \
+  ".agents/skills/bmad-create-story/workflow.yaml" \
   "_bmad/bmm/4-implementation/bmad-create-story/workflow.md" \
   "_bmad/bmm/4-implementation/create-story/workflow.md" \
   "_bmad/bmm/4-implementation/bmad-create-story/workflow.yaml" \
@@ -201,7 +250,11 @@ CREATE_STORY_PATH="$(resolve_workflow_path \
   "_bmad/bmm/workflows/4-implementation/create-story/workflow.yaml" \
   "_bmad/bmm/workflows/4-implementation/create-story/workflow.md")" \
   || err "Required workflow missing: create-story"
-DEV_STORY_PATH="$(resolve_workflow_path \
+DEV_STORY_PATH="$(resolve_skill_asset_path "claude" "bmad-dev-story" "workflow.md" "workflow.yaml" -- \
+  ".claude/skills/bmad-dev-story/workflow.md" \
+  ".claude/skills/bmad-dev-story/workflow.yaml" \
+  ".agents/skills/bmad-dev-story/workflow.md" \
+  ".agents/skills/bmad-dev-story/workflow.yaml" \
   "_bmad/bmm/4-implementation/bmad-dev-story/workflow.md" \
   "_bmad/bmm/4-implementation/dev-story/workflow.md" \
   "_bmad/bmm/4-implementation/bmad-dev-story/workflow.yaml" \
@@ -209,7 +262,11 @@ DEV_STORY_PATH="$(resolve_workflow_path \
   "_bmad/bmm/workflows/4-implementation/dev-story/workflow.yaml" \
   "_bmad/bmm/workflows/4-implementation/dev-story/workflow.md")" \
   || err "Required workflow missing: dev-story"
-RETROSPECTIVE_PATH="$(resolve_workflow_path \
+RETROSPECTIVE_PATH="$(resolve_skill_asset_path "claude" "bmad-retrospective" "workflow.md" "workflow.yaml" -- \
+  ".claude/skills/bmad-retrospective/workflow.md" \
+  ".claude/skills/bmad-retrospective/workflow.yaml" \
+  ".agents/skills/bmad-retrospective/workflow.md" \
+  ".agents/skills/bmad-retrospective/workflow.yaml" \
   "_bmad/bmm/4-implementation/bmad-retrospective/workflow.md" \
   "_bmad/bmm/4-implementation/retrospective/workflow.md" \
   "_bmad/bmm/4-implementation/bmad-retrospective/workflow.yaml" \
@@ -220,7 +277,11 @@ RETROSPECTIVE_PATH="$(resolve_workflow_path \
 
 OPTIONAL_AUTOMATE_PATH=""
 AUTOMATE_VARIANT=""
-if OPTIONAL_AUTOMATE_PATH="$(resolve_workflow_path \
+if OPTIONAL_AUTOMATE_PATH="$(resolve_skill_asset_path "claude" "bmad-qa-generate-e2e-tests" "workflow.md" "workflow.yaml" -- \
+  ".claude/skills/bmad-qa-generate-e2e-tests/workflow.md" \
+  ".claude/skills/bmad-qa-generate-e2e-tests/workflow.yaml" \
+  ".agents/skills/bmad-qa-generate-e2e-tests/workflow.md" \
+  ".agents/skills/bmad-qa-generate-e2e-tests/workflow.yaml" \
   "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.md" \
   "_bmad/tea/4-implementation/testarch-automate/workflow.md" \
   "_bmad/tea/4-implementation/bmad-testarch-automate/workflow.yaml" \

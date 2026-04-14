@@ -66,7 +66,7 @@ tmux send-keys -t "SESSION" 'claude --dangerously-skip-permissions "/bmad-bmm-de
 ```bash
 codex exec "Execute the BMAD dev-story workflow for story STORY_ID.
 
-Workflow location: use the installed dev-story workflow under either _bmad/bmm/4-implementation/bmad-dev-story/ or _bmad/bmm/workflows/4-implementation/dev-story/
+Workflow location: use the installed dev-story workflow under .agents/skills/bmad-dev-story/, .claude/skills/bmad-dev-story/, _bmad/bmm/4-implementation/bmad-dev-story/, or _bmad/bmm/workflows/4-implementation/dev-story/
 Story file: _bmad-output/implementation-artifacts/STORY_PREFIX-*.md
 Implement all tasks marked [ ]. Run tests. Update checkboxes.
 
@@ -115,7 +115,7 @@ tmux send-keys -t "SESSION" 'claude --dangerously-skip-permissions "/bmad-bmm-cr
 ```bash
 codex exec "Execute the BMAD create-story workflow for story STORY_ID.
 
-Workflow location: use the installed create-story workflow under either _bmad/bmm/4-implementation/bmad-create-story/ or _bmad/bmm/workflows/4-implementation/create-story/
+Workflow location: use the installed create-story workflow under .agents/skills/bmad-create-story/, .claude/skills/bmad-create-story/, _bmad/bmm/4-implementation/bmad-create-story/, or _bmad/bmm/workflows/4-implementation/create-story/
 - Read workflow.md for the process
 - Use template.md as the output template
 - Follow discover-inputs.md for detailed context loading
@@ -142,7 +142,7 @@ tmux send-keys -t "SESSION" 'claude --dangerously-skip-permissions "/bmad-bmm-qa
 ```bash
 codex exec "Execute the BMAD automate workflow for story STORY_ID.
 
-Workflow location: use the installed automate workflow under _bmad/tea/4-implementation/bmad-testarch-automate/, _bmad/tea/4-implementation/testarch-automate/, _bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/, _bmad/tea/workflows/testarch/automate/, or _bmad/bmm/workflows/testarch/automate/
+Workflow location: use the installed automate workflow under .agents/skills/bmad-qa-generate-e2e-tests/, .claude/skills/bmad-qa-generate-e2e-tests/, _bmad/tea/4-implementation/bmad-testarch-automate/, _bmad/tea/4-implementation/testarch-automate/, _bmad/bmm/4-implementation/bmad-qa-generate-e2e-tests/, _bmad/tea/workflows/testarch/automate/, or _bmad/bmm/workflows/testarch/automate/
 Story file: _bmad-output/implementation-artifacts/STORY_PREFIX-*.md
 Generate test automation for the implemented story.
 

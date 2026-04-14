@@ -2,6 +2,12 @@
 
 Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
+Status backfill: checked against shipped code and `npm run verify` on 2026-04-13.
+
+Notes:
+- Item 1 remains open because the original pre-edit baseline notes were not preserved in-repo.
+- Item 14 remains open because the review payload still relies on the extra instruction `auto-fix all issues without prompting` instead of encoding autonomous fix behavior directly in `instructions.xml`.
+
 ## Phase 0: Baseline
 
 1. [ ] Capture current behavior baselines.
@@ -14,7 +20,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    - baseline commands are saved in working notes
    - current default behavior is explicit before edits start
 
-2. [ ] Freeze the target JSON settings shape.
+2. [x] Freeze the target JSON settings shape.
    Depends on: 1
    Files: `docs/plans/json-settings/02-policy-model.md`
    Actions:
@@ -26,7 +32,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 1: Policy Loader And Default Policy
 
-3. [ ] Add bundled default policy JSON and data directories.
+3. [x] Add bundled default policy JSON and data directories.
    Depends on: 2
    Files:
    - `payload/.claude/skills/bmad-story-automator/data/orchestration-policy.json`
@@ -38,7 +44,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    Done when:
    - payload contains complete default machine contract
 
-4. [ ] Implement `runtime_policy.py`.
+4. [x] Implement `runtime_policy.py`.
    Depends on: 3
    Files:
    - `source/src/story_automator/core/runtime_policy.py`
@@ -52,7 +58,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    Done when:
    - one call can return effective policy plus snapshot metadata
 
-5. [ ] Refactor required/optional asset resolution behind policy.
+5. [x] Refactor required/optional asset resolution behind policy.
    Depends on: 4
    Files:
    - `source/src/story_automator/core/workflow_paths.py`
@@ -64,7 +70,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    Done when:
    - required assets never silently resolve to non-existent placeholders
 
-6. [ ] Add state metadata for policy snapshots.
+6. [x] Add state metadata for policy snapshots.
    Depends on: 4
    Files:
    - `source/src/story_automator/commands/state.py`
@@ -79,7 +85,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 2: Prompt And Parse Externalization
 
-7. [ ] Replace hard-coded tmux prompts with template rendering.
+7. [x] Replace hard-coded tmux prompts with template rendering.
    Depends on: 4, 5, 6
    Files:
    - `source/src/story_automator/commands/tmux.py`
@@ -91,7 +97,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    Done when:
    - `build-cmd` no longer uses the hard-coded prompt map
 
-8. [ ] Replace hard-coded parse schema switch with policy-backed contracts.
+8. [x] Replace hard-coded parse schema switch with policy-backed contracts.
    Depends on: 4
    Files:
    - `source/src/story_automator/commands/orchestrator_parse.py`
@@ -102,7 +108,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
    Done when:
    - parser behavior comes from data files, not `if step == ...`
 
-9. [ ] Move retry budgets into policy-backed reads.
+9. [x] Move retry budgets into policy-backed reads.
    Depends on: 4
    Files:
    - `source/src/story_automator/commands/orchestrator.py`
@@ -115,7 +121,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 3: Success Verifiers
 
-10. [ ] Add verifier registry and concrete implementations.
+10. [x] Add verifier registry and concrete implementations.
     Depends on: 4
     Files:
     - `source/src/story_automator/core/success_verifiers.py`
@@ -129,7 +135,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - verifiers are selected by name and tested independently
 
-11. [ ] Wire `monitor-session` to policy-backed verifier dispatch.
+11. [x] Wire `monitor-session` to policy-backed verifier dispatch.
     Depends on: 7, 10
     Files:
     - `source/src/story_automator/commands/tmux.py`
@@ -140,7 +146,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - completion logic is step-driven, not `workflow == "review"` driven
 
-12. [ ] Fold create story validation into `create_story_artifact`.
+12. [x] Fold create story validation into `create_story_artifact`.
     Depends on: 10, 11
     Files:
     - `source/src/story_automator/commands/orchestrator.py`
@@ -153,7 +159,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 4: Review Payload Alignment
 
-13. [ ] Add structured review contract file.
+13. [x] Add structured review contract file.
     Depends on: 3
     Files:
     - `payload/.claude/skills/bmad-story-automator-review/contract.json`
@@ -174,7 +180,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - review payload no longer contradicts runtime prompt defaults
 
-15. [ ] Update main workflow prose to reference runtime policy.
+15. [x] Update main workflow prose to reference runtime policy.
     Depends on: 3
     Files:
     - `payload/.claude/skills/bmad-story-automator/workflow.md`
@@ -187,7 +193,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 5: Testing
 
-16. [ ] Add Python unit tests for policy and verifiers.
+16. [x] Add Python unit tests for policy and verifiers.
     Depends on: 4, 8, 10
     Files:
     - `source/tests/test_runtime_policy.py`
@@ -200,7 +206,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - policy-specific behavior has direct automated coverage
 
-17. [ ] Update smoke tests for installed policy assets and defaults.
+17. [x] Update smoke tests for installed policy assets and defaults.
     Depends on: 7, 8, 11, 13, 14, 15
     Files:
     - `scripts/smoke-test.sh`
@@ -211,7 +217,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - installer/integration behavior remains covered end to end
 
-18. [ ] Update local verify flow.
+18. [x] Update local verify flow.
     Depends on: 16, 17
     Files:
     - `package.json`
@@ -225,7 +231,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
 
 ## Phase 6: Compatibility And Cleanup
 
-19. [ ] Implement legacy resume behavior and strict new-state validation.
+19. [x] Implement legacy resume behavior and strict new-state validation.
     Depends on: 6, 10, 11
     Files:
     - `source/src/story_automator/commands/state.py`
@@ -237,7 +243,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - resume is deterministic and explicit in both modes
 
-20. [ ] Preserve env compatibility for one release cycle.
+20. [x] Preserve env compatibility for one release cycle.
     Depends on: 9
     Files:
     - `source/src/story_automator/core/runtime_policy.py`
@@ -249,7 +255,7 @@ Execute in order. Do not skip ahead unless the dependency line says it is safe.
     Done when:
     - old env knobs still work without mutating resumed runs
 
-21. [ ] Remove or shrink obsolete hard-coded helpers.
+21. [x] Remove or shrink obsolete hard-coded helpers.
     Depends on: 7, 8, 9, 10, 11
     Files:
     - `source/src/story_automator/commands/tmux.py`

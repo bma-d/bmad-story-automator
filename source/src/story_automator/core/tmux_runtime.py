@@ -509,6 +509,11 @@ def _runner_session_status(
     todos_done, todos_total = _todo_counts(capture)
     active_task = extract_active_task(capture)
     lifecycle = str(state.get("lifecycle") or "")
+    prompt_visible = _check_prompt_visible(session)
+
+    if _runner_claude_prompt_completed(paths, state, capture, prompt_visible):
+        state = load_session_state(paths.state)
+        return _terminal_runner_status(session, state, full=full, project_root=root)
 
     if lifecycle == "running" and child_alive:
         label = active_task or ("Codex working" if codex else "Claude working")
@@ -648,6 +653,48 @@ def _reconcile_runner_state(paths: SessionPaths, state: dict[str, object], pane:
         return load_session_state(paths.state)
 
     return state
+
+
+def _runner_claude_prompt_completed(
+    paths: SessionPaths,
+    state: dict[str, object],
+    capture: str,
+    prompt_visible: str,
+) -> bool:
+    if str(state.get("agent") or "") != "claude":
+        return False
+    if str(state.get("lifecycle") or "") != "running":
+        return False
+    if prompt_visible != "true":
+        return False
+    if not _claude_completion_marker_present(capture):
+        return False
+
+    finished = iso_now()
+    save_session_state(
+        paths.state,
+        {
+            **state,
+            "finishedAt": str(state.get("finishedAt") or finished),
+            "updatedAt": finished,
+            "lifecycle": "finished",
+            "result": "success",
+            "exitCode": 0,
+            "failureReason": "interactive_prompt_complete",
+        },
+    )
+    return True
+
+
+def _claude_completion_marker_present(capture: str) -> bool:
+    if not capture:
+        return False
+    return bool(
+        re.search(
+            r"(?im)(?:\b(?:Baked|Done|Finished)\s+for\s+\d+m(?:\s+\d+s)?\b|\bfor\s+\d+m\s+\d+s\b)",
+            capture,
+        )
+    )
 
 
 def _legacy_session_status(
@@ -1092,12 +1139,14 @@ def _parse_statusline_time(capture: str) -> str:
 
 def _check_prompt_visible(session: str) -> str:
     capture = _capture_text(session, start=-20)
-    lines = capture.splitlines()[-3:]
-    last = lines[-1].rstrip() if lines else ""
-    if re.search(r"❯\s*([0-9]+[smh]\s*)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}\s*$", last):
-        return "true"
-    if re.search(r"(❯|\$|#|%)\s*$", last):
-        return "true"
+    for line in reversed(capture.splitlines()[-8:]):
+        current = line.rstrip()
+        if not current:
+            continue
+        if re.search(r"❯\s*([0-9]+[smh]\s*)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}\s*$", current):
+            return "true"
+        if re.search(r"(❯|\$|#|%)\s*$", current):
+            return "true"
     return "false"
 
 

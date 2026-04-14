@@ -167,6 +167,16 @@ class RuntimePolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(PolicyError, "state policy snapshot missing"):
             load_runtime_policy(str(self.project_root), state_file=str(state_file))
 
+    def test_snapshot_metadata_with_legacy_flag_is_rejected(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            f"---\npolicySnapshotFile: \"{snapshot['policySnapshotFile']}\"\npolicySnapshotHash: \"{snapshot['policySnapshotHash']}\"\nlegacyPolicy: true\n---\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(PolicyError, "state policy metadata contradictory"):
+            load_runtime_policy(str(self.project_root), state_file=str(state_file))
+
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"
         source_review = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator-review"

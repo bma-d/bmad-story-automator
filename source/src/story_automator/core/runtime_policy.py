@@ -128,15 +128,20 @@ def load_policy_for_state(
     return load_bundled_policy(str(root), resolve_assets=resolve_assets)
 
 
-def summarize_state_policy_fields(fields: dict[str, Any]) -> tuple[str, str, str, str]:
-    snapshot_file = str(fields.get("policySnapshotFile") or "").strip()
-    snapshot_hash = str(fields.get("policySnapshotHash") or "").strip()
+def summarize_state_policy_fields(fields: dict[str, Any], *, project_root: str | Path | None = None) -> tuple[str, str, str, str, str]:
     policy_version = str(fields.get("policyVersion") or "").strip()
     try:
-        _, _, legacy_mode = _state_policy_mode(fields)
-    except PolicyError:
-        legacy_mode = False
-    return snapshot_file, snapshot_hash, policy_version, "true" if legacy_mode else "false"
+        snapshot_file, snapshot_hash, legacy_mode = _state_policy_mode(fields)
+        if snapshot_file and snapshot_hash:
+            load_policy_snapshot(
+                snapshot_file,
+                project_root=str(Path(project_root or get_project_root()).resolve()),
+                expected_hash=snapshot_hash,
+                resolve_assets=False,
+            )
+    except PolicyError as exc:
+        return "", "", policy_version, "false", str(exc)
+    return snapshot_file, snapshot_hash, policy_version, "true" if legacy_mode else "false", ""
 
 
 def resolve_policy_state_file(project_root: str | Path | None = None, state_file: str | Path | None = None) -> tuple[str, str]:
@@ -399,6 +404,8 @@ def _state_policy_mode(fields: dict[str, Any]) -> tuple[str, str, bool]:
     if snapshot_file or snapshot_hash:
         if not snapshot_file or not snapshot_hash:
             raise PolicyError("state policy metadata incomplete")
+        if legacy_policy == "true":
+            raise PolicyError("state policy metadata contradictory")
         return snapshot_file, snapshot_hash, False
     if legacy_policy == "false" or policy_version:
         raise PolicyError("state policy snapshot missing")

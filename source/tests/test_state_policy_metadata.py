@@ -50,7 +50,7 @@ class StatePolicyMetadataTests(unittest.TestCase):
     def test_summary_surfaces_policy_metadata(self) -> None:
         state_file = self._build_state()
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with patch_env(self.project_root), redirect_stdout(stdout):
             code = cmd_orchestrator_helper(["state-summary", str(state_file)])
         self.assertEqual(code, 0)
         payload = json.loads(stdout.getvalue())
@@ -76,7 +76,7 @@ class StatePolicyMetadataTests(unittest.TestCase):
             encoding="utf-8",
         )
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with patch_env(self.project_root), redirect_stdout(stdout):
             code = cmd_orchestrator_helper(["state-summary", str(legacy)])
         self.assertEqual(code, 0)
         payload = json.loads(stdout.getvalue())
@@ -119,7 +119,7 @@ class StatePolicyMetadataTests(unittest.TestCase):
             encoding="utf-8",
         )
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with patch_env(self.project_root), redirect_stdout(stdout):
             code = cmd_orchestrator_helper(["state-summary", str(state_file)])
         self.assertEqual(code, 0)
         payload = json.loads(stdout.getvalue())
@@ -132,11 +132,96 @@ class StatePolicyMetadataTests(unittest.TestCase):
             encoding="utf-8",
         )
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with patch_env(self.project_root), redirect_stdout(stdout):
             code = cmd_orchestrator_helper(["state-summary", str(state_file)])
         self.assertEqual(code, 0)
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["legacyPolicy"], "false")
+        self.assertEqual(payload["policyError"], "state policy snapshot missing")
+
+    def test_summary_clears_contradictory_snapshot_metadata(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"snap.json\"\npolicySnapshotHash: \"deadbeef\"\nlegacyPolicy: true\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertEqual(payload["legacyPolicy"], "false")
+        self.assertEqual(payload["policyError"], "state policy metadata contradictory")
+
+    def test_summary_clears_incomplete_snapshot_metadata(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"snap.json\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertEqual(payload["legacyPolicy"], "false")
+        self.assertEqual(payload["policyError"], "state policy metadata incomplete")
+
+    def test_summary_reports_missing_snapshot_reference(self) -> None:
+        state_file = self.project_root / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"missing.json\"\npolicySnapshotHash: \"deadbeef\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertIn("policy snapshot missing", payload["policyError"])
+
+    def test_summary_reports_snapshot_hash_mismatch(self) -> None:
+        state_file = self._build_state()
+        lines = []
+        for line in state_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("policySnapshotHash: "):
+                lines.append('policySnapshotHash: "deadbeef"')
+            else:
+                lines.append(line)
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertIn("policy snapshot hash mismatch", payload["policyError"])
+
+    def test_summary_uses_runtime_root_for_relative_snapshot_validation(self) -> None:
+        outside = self.project_root.parent / "outside-state"
+        outside.mkdir(parents=True, exist_ok=True)
+        shadow = outside / "snap.json"
+        shadow.write_text("{}", encoding="utf-8")
+        state_file = outside / "orchestration.md"
+        state_file.write_text(
+            "---\npolicySnapshotFile: \"snap.json\"\npolicySnapshotHash: \"99999999\"\n---\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["state-summary", str(state_file)])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["policySnapshotFile"], "")
+        self.assertEqual(payload["policySnapshotHash"], "")
+        self.assertIn("policy snapshot missing", payload["policyError"])
 
     def test_escalate_uses_pinned_snapshot_when_state_file_provided(self) -> None:
         state_file = self._build_state()

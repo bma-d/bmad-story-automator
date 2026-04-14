@@ -252,23 +252,27 @@ def _state_summary(args: list[str]) -> int:
         print_json({"ok": False, "error": "file_not_found"})
         return 1
     fields = parse_simple_frontmatter(read_text(args[0]))
-    snapshot_file, snapshot_hash, policy_version, legacy_policy = summarize_state_policy_fields(fields)
-    print_json(
-        {
-            "ok": True,
-            "epic": str(fields.get("epic") or ""),
-            "epicName": str(fields.get("epicName") or ""),
-            "currentStory": str(fields.get("currentStory") or ""),
-            "currentStep": str(fields.get("currentStep") or ""),
-            "status": str(fields.get("status") or ""),
-            "lastUpdated": str(fields.get("lastUpdated") or ""),
-            "policyVersion": str(fields.get("policyVersion") or ""),
-            "policySnapshotFile": snapshot_file,
-            "policySnapshotHash": snapshot_hash,
-            "legacyPolicy": legacy_policy,
-            "lastAction": extract_last_action(args[0]),
-        }
+    snapshot_file, snapshot_hash, policy_version, legacy_policy, policy_error = summarize_state_policy_fields(
+        fields,
+        project_root=get_project_root(),
     )
+    payload = {
+        "ok": True,
+        "epic": str(fields.get("epic") or ""),
+        "epicName": str(fields.get("epicName") or ""),
+        "currentStory": str(fields.get("currentStory") or ""),
+        "currentStep": str(fields.get("currentStep") or ""),
+        "status": str(fields.get("status") or ""),
+        "lastUpdated": str(fields.get("lastUpdated") or ""),
+        "policyVersion": policy_version,
+        "policySnapshotFile": snapshot_file,
+        "policySnapshotHash": snapshot_hash,
+        "legacyPolicy": legacy_policy,
+        "lastAction": extract_last_action(args[0]),
+    }
+    if policy_error:
+        payload["policyError"] = policy_error
+    print_json(payload)
     return 0
 
 

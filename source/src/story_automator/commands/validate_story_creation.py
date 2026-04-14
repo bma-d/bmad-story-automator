@@ -99,6 +99,14 @@ def cmd_validate_story_creation(args: list[str]) -> int:
         print(json.dumps(response, separators=(",", ":")))
         return 1
 
+    def parsed_delta_counts(before_value: str | None, after_value: str | None) -> tuple[int | None, int | None]:
+        if before_value is None or after_value is None:
+            return None, None
+        try:
+            return int(before_value or ""), int(after_value or "")
+        except ValueError:
+            return None, None
+
     if action == "count":
         if not rest:
             print("Usage: validate-story-creation count <story_id>", file=os.sys.stderr)
@@ -125,7 +133,8 @@ def cmd_validate_story_creation(args: list[str]) -> int:
                     before_value = rest[idx + 1]
                     idx += 2
                 else:
-                    return print_check_error(story_id, reason="--before requires a value")
+                    before_count, after_count = parsed_delta_counts(before_value, after_value)
+                    return print_check_error(story_id, reason="--before requires a value", before_count=before_count, after_count=after_count)
                 continue
             if rest[idx] == "--after":
                 after_seen = True
@@ -133,21 +142,25 @@ def cmd_validate_story_creation(args: list[str]) -> int:
                     after_value = rest[idx + 1]
                     idx += 2
                 else:
-                    return print_check_error(story_id, reason="--after requires a value")
+                    before_count, after_count = parsed_delta_counts(before_value, after_value)
+                    return print_check_error(story_id, reason="--after requires a value", before_count=before_count, after_count=after_count)
                 continue
             if rest[idx] == "--artifacts-dir" and idx + 1 < len(rest):
                 artifacts_dir = Path(rest[idx + 1])
                 idx += 2
                 continue
             if rest[idx] == "--artifacts-dir":
-                return print_check_error(story_id, reason="--artifacts-dir requires a value")
+                before_count, after_count = parsed_delta_counts(before_value, after_value)
+                return print_check_error(story_id, reason="--artifacts-dir requires a value", before_count=before_count, after_count=after_count)
             if rest[idx] == "--state-file" and idx + 1 < len(rest):
                 state_file = rest[idx + 1]
                 idx += 2
                 continue
             if rest[idx] == "--state-file":
-                return print_check_error(story_id, reason="--state-file requires a value")
-            return print_check_error(story_id, reason=f"unsupported check argument: {rest[idx]}")
+                before_count, after_count = parsed_delta_counts(before_value, after_value)
+                return print_check_error(story_id, reason="--state-file requires a value", before_count=before_count, after_count=after_count)
+            before_count, after_count = parsed_delta_counts(before_value, after_value)
+            return print_check_error(story_id, reason=f"unsupported check argument: {rest[idx]}", before_count=before_count, after_count=after_count)
         if before_seen != after_seen:
             return print_check_error(story_id, reason="both --before and --after are required together")
         before_count = after_count = None
@@ -157,10 +170,12 @@ def cmd_validate_story_creation(args: list[str]) -> int:
                 after_count = int(after_value or "")
             except ValueError:
                 return print_check_error(story_id, reason="before/after must be integers")
-        if artifacts_dir != default_artifacts_dir and not (before_seen and after_seen):
+        if artifacts_dir != default_artifacts_dir:
             return print_check_error(
                 story_id,
                 reason="validate-story-creation check no longer supports --artifacts-dir overrides; use count/list for custom folders",
+                before_count=before_count,
+                after_count=after_count,
             )
         try:
             payload = create_check_payload(story_id, state_file)

@@ -275,6 +275,30 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertFalse(payload["valid"])
         self.assertIn("no longer supports --artifacts-dir overrides", payload["reason"])
 
+    def test_validate_story_creation_check_rejects_artifacts_dir_in_delta_mode(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "0", "--after", "1", "--artifacts-dir", str(self.project_root / "tmp")])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertIn("no longer supports --artifacts-dir overrides", payload["reason"])
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
+    def test_validate_story_creation_positional_mode_rejects_artifacts_dir_with_delta_fields(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0", "1", "--artifacts-dir", str(self.project_root / "tmp")])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertIn("no longer supports --artifacts-dir overrides", payload["reason"])
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
     def test_validate_story_creation_positional_mode_returns_compat_schema_on_bad_counts(self) -> None:
         stdout = io.StringIO()
         with patch_env(self.project_root), redirect_stdout(stdout):
@@ -310,6 +334,9 @@ class SuccessVerifierTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertFalse(payload["valid"])
         self.assertEqual(payload["reason"], "unsupported check argument: junk")
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
 
     def test_validate_story_creation_positional_mode_returns_compat_schema_on_incomplete_state_file(self) -> None:
         stdout = io.StringIO()
@@ -319,6 +346,65 @@ class SuccessVerifierTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertFalse(payload["valid"])
         self.assertEqual(payload["reason"], "--state-file requires a value")
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
+    def test_validate_story_creation_check_preserves_delta_on_incomplete_state_file(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "0", "--after", "1", "--state-file"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "--state-file requires a value")
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
+    def test_validate_story_creation_check_preserves_delta_on_trailing_before_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--before", "0", "--after", "1", "--before"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "--before requires a value")
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
+    def test_validate_story_creation_positional_mode_preserves_delta_on_trailing_before_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "0", "1", "--before"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["reason"], "--before requires a value")
+        self.assertEqual(payload["created_count"], 1)
+        self.assertEqual(payload["before"], 0)
+        self.assertEqual(payload["after"], 1)
+
+    def test_validate_story_creation_check_returns_compat_failure_without_exception(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["created_count"], 0)
+        self.assertEqual(payload["reason"], "No story file created - session may have failed")
+
+    def test_validate_story_creation_positional_mode_returns_delta_failure_without_exception(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["1.2", "1", "3"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertEqual(payload["created_count"], 2)
+        self.assertEqual(payload["reason"], "RUNAWAY CREATION: 2 files created instead of 1")
 
     def test_validate_story_creation_check_preserves_zero_expected_matches(self) -> None:
         self._write_override({"steps": {"create": {"success": {"config": {"expectedMatches": 0}}}}})

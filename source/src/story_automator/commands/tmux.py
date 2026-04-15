@@ -202,7 +202,8 @@ def _build_cmd(args: list[str]) -> int:
     try:
         policy = load_runtime_policy(root, state_file=state_file)
         contract = step_contract(policy, step)
-    except (FileNotFoundError, PolicyError) as exc:
+        prompt = _render_step_prompt(contract, story_id, story_prefix, extra)
+    except (OSError, PolicyError) as exc:
         print(str(exc), file=__import__("sys").stderr)
         return 1
     ai_command = os.environ.get("AI_COMMAND")
@@ -212,7 +213,6 @@ def _build_cmd(args: list[str]) -> int:
         cli = agent_cli(agent)
     else:
         cli = "codex exec"
-    prompt = _render_step_prompt(contract, story_id, story_prefix, extra)
     quoted_prompt = shlex.quote(prompt)
     if agent == "codex" and not ai_command:
         codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"
@@ -796,7 +796,7 @@ def _verify_monitor_completion(
         return ({"verified": False, "reason": "verifier_contract_invalid"}, "")
     verifier_name = str(contract.get("verifier") or "").strip()
     if not verifier_name:
-        return None
+        return ({"verified": False, "reason": "verifier_contract_invalid"}, "")
     if verifier_name in {"create_story_artifact", "review_completion", "epic_complete"} and not story_key.strip():
         return ({"verified": False, "reason": "story_key_required", "verifier": verifier_name}, verifier_name)
     try:

@@ -268,6 +268,27 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("--state-file requires a value", stderr.getvalue())
 
+    def test_build_cmd_returns_exit_code_one_when_prompt_template_is_missing(self) -> None:
+        state_file = self._build_state()
+        template = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "prompts" / "review.md"
+        template.unlink()
+        stderr = io.StringIO()
+        with patch_env(self.project_root), redirect_stderr(stderr):
+            code = _build_cmd(["review", "1.1", "--state-file", str(state_file)])
+        self.assertEqual(code, 1)
+        self.assertIn("review.md", stderr.getvalue())
+
+    def test_build_cmd_returns_exit_code_one_when_prompt_template_becomes_directory(self) -> None:
+        state_file = self._build_state()
+        template = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "prompts" / "review.md"
+        template.unlink()
+        template.mkdir()
+        stderr = io.StringIO()
+        with patch_env(self.project_root), redirect_stderr(stderr):
+            code = _build_cmd(["review", "1.1", "--state-file", str(state_file)])
+        self.assertEqual(code, 1)
+        self.assertIn("review.md", stderr.getvalue())
+
     def test_tmux_subcommand_help_matches_step_preflight_contract(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):

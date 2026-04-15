@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, parser_runtime_config, step_contract
 from story_automator.core.utils import COMMAND_TIMEOUT_EXIT, extract_json_line, print_json, read_text, run_cmd, trim_lines
@@ -14,7 +15,10 @@ def parse_output_action(args: list[str]) -> int:
     state_file = ""
     idx = 2
     while idx < len(args):
-        if args[idx] == "--state-file" and idx + 1 < len(args):
+        if args[idx] == "--state-file":
+            if idx + 1 >= len(args) or not args[idx + 1].strip() or args[idx + 1].startswith("--"):
+                print_json({"status": "error", "reason": "parse_contract_invalid"})
+                return 1
             state_file = args[idx + 1]
             idx += 2
             continue
@@ -71,7 +75,10 @@ def _load_parse_contract(contract: dict[str, object]) -> dict[str, object]:
     payload = json.loads(read_text(str(parse.get("schemaPath") or "")))
     if not isinstance(payload, dict):
         raise ValueError("invalid parse schema")
-    if not isinstance(payload.get("requiredKeys"), list):
+    required_keys = payload.get("requiredKeys")
+    if not isinstance(required_keys, list):
+        raise ValueError("invalid parse schema")
+    if any(not isinstance(key, str) or not key.strip() for key in required_keys):
         raise ValueError("invalid parse schema")
     if not isinstance(payload.get("schema"), dict):
         raise ValueError("invalid parse schema")
@@ -84,7 +91,7 @@ def _build_parse_prompt(contract: dict[str, object], parse_contract: dict[str, o
     return f"Analyze this {label} session output. Return JSON only:\n{schema}\n\nSession output:\n---\n{content}\n---"
 
 
-def _has_required_keys(payload: object, required_keys: list[object]) -> bool:
+def _has_required_keys(payload: object, required_keys: list[Any]) -> bool:
     if not isinstance(payload, dict):
         return False
     return all(isinstance(key, str) and key in payload for key in required_keys)

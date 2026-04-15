@@ -154,7 +154,7 @@ validation=$("$scripts" orchestrator-helper verify-step create {story_id} --stat
 # Retry loop with agent alternation: see {retryStrategy}
 session=$("$scripts" tmux-wrapper spawn dev {epic} {story_id} \
   --agent "$current_agent" \
-  --command "$("$scripts" tmux-wrapper build-cmd dev {story_id} --agent "$current_agent")")
+  --command "$("$scripts" tmux-wrapper build-cmd dev {story_id} --agent "$current_agent" --state-file "$state_file")")
 result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
 "$scripts" tmux-wrapper kill "$session"
 ```

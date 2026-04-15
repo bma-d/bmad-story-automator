@@ -421,12 +421,20 @@ def _verify_step(args: list[str]) -> int:
     state_file = ""
     output_file = ""
     tail = args[2:]
-    for idx, arg in enumerate(tail):
-        if arg == "--state-file" and idx + 1 < len(tail):
-            state_file = tail[idx + 1]
-        elif arg == "--output-file" and idx + 1 < len(tail):
-            output_file = tail[idx + 1]
     try:
+        idx = 0
+        while idx < len(tail):
+            arg = tail[idx]
+            if arg in {"--state-file", "--output-file"}:
+                if idx + 1 >= len(tail) or not tail[idx + 1].strip() or tail[idx + 1].startswith("--"):
+                    raise PolicyError(f"{arg} requires a value")
+                if arg == "--state-file":
+                    state_file = tail[idx + 1]
+                else:
+                    output_file = tail[idx + 1]
+                idx += 2
+                continue
+            idx += 1
         contract = resolve_success_contract(get_project_root(), step, state_file=state_file or None)
         verifier = str(contract.get("verifier") or "").strip()
         if not verifier:
@@ -439,7 +447,7 @@ def _verify_step(args: list[str]) -> int:
             contract=contract,
         )
         exit_code = 0
-    except (FileNotFoundError, PolicyError) as exc:
+    except (FileNotFoundError, PolicyError, ValueError) as exc:
         payload = {"verified": False, "step": step, "input": story_key, "reason": "verifier_contract_invalid", "error": str(exc)}
         exit_code = 1
     print_json(payload)

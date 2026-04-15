@@ -59,7 +59,11 @@ bundled default policy
   + optional project override
   = effective runtime policy
   -> pinned snapshot at orchestration start
-  -> state doc stores pointer + hash
+  -> state doc stores:
+     - policySnapshotFile (string snapshot pointer)
+     - policySnapshotHash (string snapshot hash)
+     - policyVersion (string/integer runtime policy version)
+     - legacyPolicy (boolean legacy-state marker)
   -> all resume/replay uses snapshot only
 ```
 
@@ -82,4 +86,3 @@ This plan does not try to deliver:
 - custom Python or shell expressions in config
 - a general workflow interpreter
 - rich nested policy blobs embedded in frontmatter
-

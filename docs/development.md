@@ -34,8 +34,8 @@ The smoke suite validates:
 ```mermaid
 flowchart TD
     A["Edit installer, payload, or runtime"] --> B["Run npm run test:python"]
-    B --> C["Run npm run test:smoke"]
-    C --> D["Run npm run pack:dry-run"]
+    B --> C["Run npm run pack:dry-run"]
+    C --> D["Run npm run test:smoke"]
     D --> E["Run npm run verify"]
 ```
 

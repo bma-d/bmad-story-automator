@@ -138,7 +138,11 @@ class SuccessVerifierTests(unittest.TestCase):
             story_key="",
             output_file="/tmp/session.txt",
         )
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        payload, verifier = result or ({}, "")
+        self.assertEqual(verifier, "review_completion")
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "story_key_required")
 
     def test_monitor_dispatch_allows_session_exit_without_story_key(self) -> None:
         result = _verify_monitor_completion(
@@ -247,6 +251,52 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertEqual(payload["source"], "")
         self.assertEqual(payload["pattern"], "")
         self.assertEqual(payload["matches"], [])
+
+    def test_validate_story_creation_check_returns_compat_schema_on_missing_state_file(self) -> None:
+        stdout = io.StringIO()
+        missing = self.project_root / "missing-state.md"
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--state-file", str(missing)])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertIn("missing-state.md", payload["reason"])
+
+    def test_review_wrapper_honors_empty_injected_contract(self) -> None:
+        self._write_story("1-2-example", status="done")
+        self._write_override(
+            {
+                "steps": {
+                    "review": {
+                        "success": {
+                            "config": {"doneValues": ["approved"], "sourceOrder": ["story-file"], "syncSprintStatus": False}
+                        }
+                    }
+                }
+            }
+        )
+        payload = verify_code_review_completion(str(self.project_root), "1.2", success_contract={})
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["source"], "story-file")
+
+    def test_review_wrapper_normalizes_policy_error(self) -> None:
+        payload = verify_code_review_completion(
+            str(self.project_root),
+            "1.2",
+            success_contract={"doneValues": [], "sourceOrder": ["story-file"]},
+        )
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "review_contract_invalid")
+
+    def test_verify_step_rejects_incomplete_state_file_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["verify-step", "create", "1.2", "--state-file"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "verifier_contract_invalid")
+        self.assertEqual(payload["error"], "--state-file requires a value")
 
     def test_validate_story_creation_check_returns_compat_schema_on_bad_counts(self) -> None:
         stdout = io.StringIO()

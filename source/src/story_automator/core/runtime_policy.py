@@ -39,6 +39,7 @@ def load_effective_policy(project_root: str | None = None, *, resolve_assets: bo
     policy = _deep_merge(bundled, override)
     _apply_legacy_env(policy)
     _validate_policy_shape(policy)
+    _clear_resolved_fields(policy)
     if resolve_assets:
         _resolve_policy_paths(policy, project_root=root, bundle_root=bundled_skill_root(root))
     else:
@@ -65,7 +66,7 @@ def load_runtime_policy(
 def snapshot_effective_policy(project_root: str | None = None) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
     policy = load_effective_policy(str(root))
-    snapshot_dir = root / _snapshot_relative_dir(policy)
+    snapshot_dir = _resolve_snapshot_dir(policy, root)
     ensure_dir(snapshot_dir)
     stable_json = _stable_policy_json(policy)
     snapshot_hash = md5_hex8(stable_json)
@@ -229,6 +230,27 @@ def _deep_merge(base: Any, override: Any) -> Any:
     return override
 
 
+def _clear_resolved_fields(policy: dict[str, Any]) -> None:
+    for contract in (policy.get("steps") or {}).values():
+        if not isinstance(contract, dict):
+            continue
+        assets = contract.get("assets")
+        if isinstance(assets, dict):
+            assets.pop("files", None)
+        prompt = contract.get("prompt")
+        if isinstance(prompt, dict):
+            prompt.pop("templatePath", None)
+            prompt.pop("templateHash", None)
+        parse = contract.get("parse")
+        if isinstance(parse, dict):
+            parse.pop("schemaPath", None)
+            parse.pop("schemaHash", None)
+        success = contract.get("success")
+        if isinstance(success, dict):
+            success.pop("contractPath", None)
+            success.pop("contractHash", None)
+
+
 def _apply_legacy_env(policy: dict[str, Any]) -> None:
     review_cycles = os.environ.get("MAX_REVIEW_CYCLES")
     crash_retries = os.environ.get("MAX_CRASH_RETRIES")
@@ -305,15 +327,18 @@ def _resolve_policy_paths(policy: dict[str, Any], *, project_root: Path, bundle_
         if not template_file:
             raise PolicyError(f"missing prompt template for {name}")
         prompt["templatePath"] = _resolve_data_path(template_file, project_root=project_root, bundle_root=bundle_root)
+        _set_or_verify_hash(prompt, path_key="templatePath", hash_key="templateHash", label="policy template")
         parse = contract.setdefault("parse", {})
         schema_file = str(parse.get("schemaFile") or "").strip()
         if not schema_file:
             raise PolicyError(f"missing parse schema for {name}")
         parse["schemaPath"] = _resolve_data_path(schema_file, project_root=project_root, bundle_root=bundle_root)
+        _set_or_verify_hash(parse, path_key="schemaPath", hash_key="schemaHash", label="policy parse schema")
         success = contract.setdefault("success", {})
         contract_file = str(success.get("contractFile") or "").strip()
         if contract_file:
             success["contractPath"] = _resolve_data_path(contract_file, project_root=project_root, bundle_root=bundle_root)
+            _set_or_verify_hash(success, path_key="contractPath", hash_key="contractHash", label="policy success contract")
 
 
 def _resolve_success_paths(policy: dict[str, Any], *, project_root: Path, bundle_root: Path) -> None:
@@ -322,13 +347,15 @@ def _resolve_success_paths(policy: dict[str, Any], *, project_root: Path, bundle
         contract_file = str(success.get("contractFile") or "").strip()
         if contract_file:
             success["contractPath"] = _resolve_data_path(contract_file, project_root=project_root, bundle_root=bundle_root)
+            _set_or_verify_hash(success, path_key="contractPath", hash_key="contractHash", label="policy success contract")
 
 
 def _resolve_step_assets(step: str, assets: dict[str, Any], project_root: Path) -> dict[str, str]:
     skill_name = str(assets.get("skillName") or "").strip()
     if not skill_name:
         raise PolicyError(f"missing skillName for {step}")
-    skill_dir = project_root / ".claude" / "skills" / skill_name
+    skills_root = (project_root / ".claude" / "skills").resolve()
+    skill_dir = _ensure_within(skills_root / skill_name, skills_root, f"skillName for {step}")
     required = set(assets.get("required") or [])
     files = {
         "skill": _resolve_required_file(skill_dir / "SKILL.md", project_root, required, "skill", step),
@@ -364,7 +391,7 @@ def _resolve_candidate_file(
     for name in candidates:
         if not isinstance(name, str) or not name:
             continue
-        path = skill_dir / name
+        path = _ensure_within(skill_dir / name, skill_dir, f"{asset} candidate for {step}")
         if path.is_file():
             return _display_path(path, project_root)
     if asset in required:
@@ -375,14 +402,24 @@ def _resolve_candidate_file(
 
 def _resolve_data_path(path_value: str, *, project_root: Path, bundle_root: Path) -> str:
     raw = Path(path_value)
+    allowed_roots = (bundle_root.resolve(), project_root.resolve())
     if raw.is_absolute():
-        if not raw.is_file():
+        resolved = raw.resolve()
+        if not _is_within_any(resolved, allowed_roots):
+            raise PolicyError(f"policy data path escapes allowed roots: {path_value}")
+        if not resolved.is_file():
             raise PolicyError(f"policy data file missing: {raw}")
-        return str(raw)
-    for base in (bundle_root, project_root):
+        return str(resolved)
+    escaped_all = True
+    for base in allowed_roots:
         candidate = (base / raw).resolve()
+        if not _is_within(candidate, base):
+            continue
+        escaped_all = False
         if candidate.is_file():
             return str(candidate)
+    if escaped_all:
+        raise PolicyError(f"policy data path escapes allowed roots: {path_value}")
     raise PolicyError(f"policy data file missing: {path_value}")
 
 
@@ -392,6 +429,12 @@ def _snapshot_relative_dir(policy: dict[str, Any]) -> str:
     if not relative_dir:
         raise PolicyError("snapshot.relativeDir missing")
     return relative_dir
+
+
+def _resolve_snapshot_dir(policy: dict[str, Any], project_root: Path) -> Path:
+    raw = Path(_snapshot_relative_dir(policy))
+    candidate = raw if raw.is_absolute() else project_root / raw
+    return _ensure_within(candidate, project_root.resolve(), "snapshot.relativeDir")
 
 
 def _stable_policy_json(policy: dict[str, Any]) -> str:
@@ -407,6 +450,39 @@ def _display_path(path: Path, project_root: Path) -> str:
 
 def _resolve_state_path(project_root: Path, path: Path) -> Path:
     return path if path.is_absolute() else project_root / path
+
+
+def _set_or_verify_hash(payload: dict[str, Any], *, path_key: str, hash_key: str, label: str) -> None:
+    path = str(payload.get(path_key) or "").strip()
+    if not path:
+        return
+    actual = md5_hex8(read_text(path))
+    expected = str(payload.get(hash_key) or "").strip()
+    if expected and expected != actual:
+        raise PolicyError(f"{label} hash mismatch: {path}")
+    payload[hash_key] = actual
+
+
+def _ensure_within(path: Path, root: Path, label: str) -> Path:
+    resolved = path.resolve()
+    root_resolved = root.resolve()
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise PolicyError(f"{label} escapes allowed root: {path}") from exc
+    return resolved
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _is_within_any(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(_is_within(path, root) for root in roots)
 
 
 def _state_policy_mode(fields: dict[str, Any]) -> tuple[str, str, bool]:

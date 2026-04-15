@@ -43,7 +43,11 @@ def cmd_build_state_doc(args: list[str]) -> int:
     epic = str(config.get("epic") or "epic")
     safe_epic = re.sub(r"[^a-zA-Z0-9]+", "-", epic).strip("-") or "epic"
     output_path = Path(output_folder) / f"orchestration-{safe_epic}-{stamp}.md"
-    snapshot = snapshot_effective_policy(get_project_root())
+    try:
+        snapshot = snapshot_effective_policy(get_project_root())
+    except (FileNotFoundError, PolicyError, ValueError) as exc:
+        write_json({"ok": False, "error": "policy_snapshot_failed", "reason": str(exc)})
+        return 1
     text = read_text(template)
     replacements: dict[str, Any] = {
         "epic": config.get("epic", ""),

@@ -117,6 +117,27 @@ class RuntimePolicyTests(unittest.TestCase):
         template_path = policy["steps"]["create"]["prompt"]["templatePath"]
         self.assertTrue(str(copied_root) in template_path)
 
+    def test_snapshot_relative_dir_cannot_escape_project_root(self) -> None:
+        self._write_override({"snapshot": {"relativeDir": "../outside"}})
+        with self.assertRaisesRegex(PolicyError, "snapshot.relativeDir escapes allowed root"):
+            snapshot_effective_policy(str(self.project_root))
+
+    def test_data_path_cannot_escape_allowed_roots(self) -> None:
+        self._write_override({"steps": {"create": {"prompt": {"templateFile": "../outside.md"}}}})
+        with self.assertRaisesRegex(PolicyError, "policy data path escapes allowed roots"):
+            load_effective_policy(str(self.project_root))
+
+    def test_snapshot_detects_prompt_template_drift(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        prompt = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "prompts" / "create.md"
+        prompt.write_text("# changed\n", encoding="utf-8")
+        with self.assertRaisesRegex(PolicyError, "policy template hash mismatch"):
+            load_policy_snapshot(
+                snapshot["policySnapshotFile"],
+                project_root=str(self.project_root),
+                expected_hash=snapshot["policySnapshotHash"],
+            )
+
     def test_missing_marker_state_falls_back_to_effective_policy(self) -> None:
         marker = self.project_root / ".claude" / ".story-automator-active"
         marker.parent.mkdir(parents=True, exist_ok=True)

@@ -130,12 +130,7 @@ High-level example:
     }
   },
   "workflow": {
-    "sequence": ["create", "dev", "auto", "review"],
-    "optional": {
-      "auto": {
-        "skipWhenOverride": "skipAutomate"
-      }
-    },
+    "sequence": ["create", "dev", "auto", "review", "retro"],
     "repeat": {
       "review": {
         "maxCycles": 5,
@@ -147,17 +142,7 @@ High-level example:
     "crash": {
       "maxRetries": 2,
       "onExhausted": "escalate"
-    },
-    "triggers": [
-      {
-        "name": "retrospective_on_epic_complete",
-        "after": "review",
-        "verifier": "epic_complete",
-        "run": "retro",
-        "blocking": false,
-        "forceAgent": "claude"
-      }
-    ]
+    }
   },
   "steps": {
     "create": {
@@ -270,4 +255,3 @@ Without a pinned snapshot, these changes become unsafe:
 - verifier threshold change after preflight
 
 The snapshot prevents those mutations from changing the behavior of a resumed orchestration.
-

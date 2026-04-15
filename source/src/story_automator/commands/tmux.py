@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import time
 from pathlib import Path
 
@@ -204,7 +205,7 @@ def _build_cmd(args: list[str]) -> int:
     else:
         cli = "codex exec"
     prompt = _render_step_prompt(contract, story_id, story_prefix, extra)
-    escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
+    quoted_prompt = shlex.quote(prompt)
     if agent == "codex" and not ai_command:
         codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"
         auth_src = os.path.expanduser("~/.codex/auth.json")
@@ -213,10 +214,10 @@ def _build_cmd(args: list[str]) -> int:
             + f' && if [ -f "{auth_src}" ]; then ln -sf "{auth_src}" "{codex_home}/auth.json"; fi'
             + f' && CODEX_HOME="{codex_home}" codex exec -s workspace-write -c \'approval_policy="never"\''
             + f' -c \'model_reasoning_effort="high"\''
-            + f' --disable plugins --disable sqlite --disable shell_snapshot "{escaped}"'
+            + f" --disable plugins --disable sqlite --disable shell_snapshot {quoted_prompt}"
         )
     else:
-        print(f'unset CLAUDECODE && {cli} "{escaped}"')
+        print(f"unset CLAUDECODE && {cli} {quoted_prompt}")
     return 0
 
 
@@ -785,7 +786,7 @@ def _verify_monitor_completion(
     if not verifier_name:
         return None
     if verifier_name in {"create_story_artifact", "review_completion", "epic_complete"} and not story_key.strip():
-        return None
+        return ({"verified": False, "reason": "story_key_required", "verifier": verifier_name}, verifier_name)
     try:
         result = run_success_verifier(
             verifier_name,

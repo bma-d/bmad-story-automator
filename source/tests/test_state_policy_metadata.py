@@ -259,6 +259,32 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertEqual(code, 0)
         rendered = stdout.getvalue()
         self.assertNotIn("--state-file", rendered)
+        self.assertNotIn(str(state_file), rendered)
+
+    def test_build_state_doc_returns_json_on_policy_snapshot_failure(self) -> None:
+        override_dir = self.project_root / "_bmad" / "bmm"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "story-automator.policy.json").write_text(
+            json.dumps({"snapshot": {"relativeDir": "../outside"}}),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        template = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "templates" / "state-document.md"
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_build_state_doc(
+                [
+                    "--template",
+                    str(template),
+                    "--output-folder",
+                    str(self.output_dir),
+                    "--config-json",
+                    json.dumps(self._config()),
+                ]
+            )
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"], "policy_snapshot_failed")
 
     def test_build_cmd_rejects_unknown_step_via_policy(self) -> None:
         stderr = io.StringIO()

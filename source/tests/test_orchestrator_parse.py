@@ -53,6 +53,22 @@ class OrchestratorParseTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(stdout.getvalue())["reason"], "parse_contract_invalid")
 
+    def test_missing_state_file_flag_value_rejected(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create", "--state-file"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "parse_contract_invalid")
+
+    def test_non_string_required_key_rejected(self) -> None:
+        schema = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "parse" / "create.json"
+        schema.write_text(json.dumps({"requiredKeys": [True], "schema": {}}), encoding="utf-8")
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "create"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "parse_contract_invalid")
+
     def test_invalid_child_json_rejected(self) -> None:
         stdout = io.StringIO()
         with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(

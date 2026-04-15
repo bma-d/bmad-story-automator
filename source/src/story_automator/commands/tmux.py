@@ -744,7 +744,15 @@ def cmd_monitor_session(args: list[str]) -> int:
                 verified, verifier_name = verification
                 if bool(verified.get("verified")):
                     reason = "normal_completion" if verifier_name == "session_exit" else "verified_complete"
-                    return _emit_monitor(json_output, "completed", last_done, last_total, str(output), reason)
+                    return _emit_monitor(
+                        json_output,
+                        "completed",
+                        last_done,
+                        last_total,
+                        str(output),
+                        reason,
+                        output_verified=bool(verified.get("verified")),
+                    )
                 return _emit_monitor(
                     json_output,
                     "incomplete",
@@ -752,6 +760,7 @@ def cmd_monitor_session(args: list[str]) -> int:
                     last_total,
                     str(output),
                     str(verified.get("reason") or "workflow_not_verified"),
+                    output_verified=bool(verified.get("verified")),
                 )
             return _emit_monitor(json_output, "completed", last_done, last_total, str(output), "normal_completion")
         if state == "crashed":
@@ -774,9 +783,27 @@ def cmd_monitor_session(args: list[str]) -> int:
     return _emit_monitor(json_output, "timeout", last_done, last_total, str(output), "max_polls_exceeded")
 
 
-def _emit_monitor(json_output: bool, state: str, done: int, total: int, output_file: str, reason: str) -> int:
+def _emit_monitor(
+    json_output: bool,
+    state: str,
+    done: int,
+    total: int,
+    output_file: str,
+    reason: str,
+    *,
+    output_verified: bool | None = None,
+) -> int:
     if json_output:
-        print_json({"final_state": state, "todos_done": done, "todos_total": total, "output_file": output_file, "exit_reason": reason, "output_verified": bool(output_file)})
+        print_json(
+            {
+                "final_state": state,
+                "todos_done": done,
+                "todos_total": total,
+                "output_file": output_file,
+                "exit_reason": reason,
+                "output_verified": False if output_verified is None else output_verified,
+            }
+        )
     else:
         print(f"{state},{done},{total},{output_file},{reason}")
     return 0
@@ -807,7 +834,7 @@ def _verify_monitor_completion(
             output_file=output_file,
             contract=contract,
         )
-    except PolicyError:
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PolicyError):
         return ({"verified": False, "reason": "verifier_contract_invalid"}, verifier_name)
     return (result, verifier_name)
 

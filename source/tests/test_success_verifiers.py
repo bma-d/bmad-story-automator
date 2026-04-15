@@ -198,6 +198,49 @@ class SuccessVerifierTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["final_state"], "incomplete")
         self.assertEqual(payload["exit_reason"], "verifier_contract_invalid")
+        self.assertFalse(payload["output_verified"])
+
+    def test_monitor_dispatch_rejects_verifier_side_file_error(self) -> None:
+        with patch("story_automator.commands.tmux.run_success_verifier", side_effect=FileNotFoundError("missing.json")):
+            result = _verify_monitor_completion(
+                "review",
+                project_root=str(self.project_root),
+                story_key="1.2",
+                output_file="/tmp/session.txt",
+            )
+        self.assertIsNotNone(result)
+        payload, verifier = result or ({}, "")
+        self.assertEqual(verifier, "review_completion")
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "verifier_contract_invalid")
+
+    def test_monitor_session_reports_incomplete_when_verifier_raises_file_error(self) -> None:
+        stdout = io.StringIO()
+        statuses = [
+            {"todos_done": 1, "todos_total": 1, "session_state": "completed"},
+            {"active_task": "/tmp/session.txt"},
+        ]
+        with patch_env(self.project_root), patch("story_automator.commands.tmux.time.sleep"), patch(
+            "story_automator.commands.tmux.session_status", side_effect=statuses
+        ), patch("story_automator.commands.tmux.run_success_verifier", side_effect=FileNotFoundError("missing.json")), redirect_stdout(stdout):
+            code = cmd_monitor_session(["fake-session", "--json", "--workflow", "review", "--story-key", "1.2"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["final_state"], "incomplete")
+        self.assertEqual(payload["exit_reason"], "verifier_contract_invalid")
+        self.assertFalse(payload["output_verified"])
+
+    def test_monitor_session_timeout_keeps_output_unverified_without_verifier_result(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), patch(
+            "story_automator.commands.tmux.session_status", return_value={"active_task": "/tmp/session.txt"}
+        ), redirect_stdout(stdout):
+            code = cmd_monitor_session(["fake-session", "--json", "--max-polls", "0"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["final_state"], "timeout")
+        self.assertEqual(payload["exit_reason"], "max_polls_exceeded")
+        self.assertFalse(payload["output_verified"])
 
     def test_monitor_dispatch_allows_session_exit_without_story_key(self) -> None:
         result = _verify_monitor_completion(

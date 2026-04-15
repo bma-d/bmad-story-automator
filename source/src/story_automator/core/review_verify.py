@@ -1,34 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from .frontmatter import find_frontmatter_value_case
-from .sprint import sprint_status_get
-from .story_keys import normalize_story_key
+from .runtime_policy import PolicyError
+from .success_verifiers import resolve_success_contract, review_completion
 
 
-def verify_code_review_completion(project_root: str, story_key: str) -> dict[str, object]:
-    norm = normalize_story_key(project_root, story_key)
-    if norm is None:
-        return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
-    status = sprint_status_get(project_root, norm.id)
-    if status.done:
-        return {"verified": True, "story": norm.key, "sprint_status": "done", "source": "sprint-status.yaml"}
-    matches = sorted((Path(project_root) / "_bmad-output" / "implementation-artifacts").glob(f"{norm.prefix}-*.md"))
-    story_status = find_frontmatter_value_case(matches[0], "Status") if matches else ""
-    if story_status == "done":
-        return {
-            "verified": True,
-            "story": norm.key,
-            "sprint_status": status.status,
-            "story_file_status": "done",
-            "source": "story-file",
-            "note": "sprint_status_not_updated",
-        }
-    return {
-        "verified": False,
-        "story": norm.key,
-        "sprint_status": status.status,
-        "story_file_status": story_status or "unknown",
-        "reason": "workflow_not_complete",
-    }
+def verify_code_review_completion(
+    project_root: str,
+    story_key: str,
+    *,
+    success_contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
+) -> dict[str, object]:
+    try:
+        contract = resolve_success_contract(project_root, "review", state_file=state_file) if success_contract is None else success_contract
+        return review_completion(project_root=project_root, story_key=story_key, contract=contract)
+    except (FileNotFoundError, ValueError, PolicyError) as exc:
+        return {"verified": False, "reason": "review_contract_invalid", "input": story_key, "error": str(exc)}

@@ -62,6 +62,7 @@ Critical rule:
 - `orchestrator-helper state-summary`
 - `orchestrator-helper state-update`
 - `orchestrator-helper marker create|remove|check|heartbeat`
+- `orchestrator-helper verify-step`
 - `orchestrator-helper verify-code-review`
 - `orchestrator-helper get-epic-stories`
 - `orchestrator-helper check-epic-complete`
@@ -86,7 +87,7 @@ These support saved presets and generated agent plans.
 - `stop-hook`
 - `list-sessions`
 - `commit-story`
-- `validate-story-creation`
+- `validate-story-creation` (legacy compatibility wrapper; prefer `orchestrator-helper verify-step create`)
 
 ## Typical Patterns
 
@@ -108,6 +109,18 @@ session="$("$scripts" tmux-wrapper spawn review 1 1.2 --agent claude --command "
 
 ```bash
 "$scripts" orchestrator-helper agents-resolve --state-file "$state_file" --story 1.2 --task review
+```
+
+### Verify Create Success
+
+```bash
+"$scripts" orchestrator-helper verify-step create 1.2 --state-file "$state_file"
+```
+
+Legacy compatibility:
+
+```bash
+"$scripts" validate-story-creation check 1.2 --state-file "$state_file"
 ```
 
 ## Read Next

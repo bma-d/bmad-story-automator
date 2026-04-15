@@ -35,7 +35,7 @@ Set: `scripts="{scriptsDir}"`
 # --command required (see Spawn Pattern in step-03)
 session=$("$scripts" tmux-wrapper spawn auto {epic} {story_id} \
   --agent "$current_agent" \
-  --command "$("$scripts" tmux-wrapper build-cmd auto {story_id} --agent "$current_agent")")
+  --command "$("$scripts" tmux-wrapper build-cmd auto {story_id} --agent "$current_agent" --state-file "$state_file")")
 result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
 "$scripts" tmux-wrapper kill "$session"
 ```
@@ -74,7 +74,7 @@ if [ -z "$review_focus" ]; then
 fi
 
 # Compact subprocess-style summary contract for parent flow
-review_summary=$("$scripts" orchestrator-helper parse-output "$review_log" review | jq -c '
+review_summary=$("$scripts" orchestrator-helper parse-output "$review_log" review --state-file "$state_file" | jq -c '
   {
     next_action: (.next_action // "retry"),
     confidence: (.confidence // 0),

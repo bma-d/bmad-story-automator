@@ -18,6 +18,10 @@ overrides:
 customInstructions: ""  # User-provided instructions for orchestration
 agentsFile: ""  # Deterministic per-story agent selections
 complexityFile: ""  # Persisted story complexity data
+policyVersion: 0
+policySnapshotFile: ""
+policySnapshotHash: ""
+legacyPolicy: false
 
 # Agent Configuration (v3.0.0)
 agentConfig:

@@ -5,8 +5,22 @@ import os
 import re
 from pathlib import Path
 
-from story_automator.core.frontmatter import extract_last_action, find_frontmatter_value, find_frontmatter_value_case, parse_frontmatter
+from story_automator.core.frontmatter import (
+    extract_last_action,
+    find_frontmatter_value,
+    find_frontmatter_value_case,
+    parse_frontmatter,
+    parse_simple_frontmatter,
+)
+from story_automator.core.runtime_policy import (
+    PolicyError,
+    crash_max_retries,
+    load_runtime_policy,
+    review_max_cycles,
+    summarize_state_policy_fields,
+)
 from story_automator.core.review_verify import verify_code_review_completion
+from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
 from story_automator.core.sprint import sprint_status_epic, sprint_status_get
 from story_automator.core.story_keys import normalize_story_key, sprint_status_file
 from story_automator.core.utils import (
@@ -50,6 +64,7 @@ def cmd_orchestrator_helper(args: list[str]) -> int:
         "commit-ready": _commit_ready,
         "normalize-key": _normalize_key,
         "story-file-status": _story_file_status,
+        "verify-step": _verify_step,
         "verify-code-review": _verify_code_review,
         "check-epic-complete": check_epic_complete_action,
         "get-epic-stories": get_epic_stories_action,
@@ -85,6 +100,7 @@ def _usage(code: int) -> int:
     print("  commit-ready <story_id>", file=target)
     print("  normalize-key <input> [--to id|key|prefix|json]", file=target)
     print("  story-file-status <story>", file=target)
+    print("  verify-step <step> <story_or_epic> [--state-file path] [--output-file path]", file=target)
     print("  verify-code-review <story>", file=target)
     print("  check-epic-complete <epic> <story> [--state-file path]", file=target)
     print("  get-epic-stories <epic> [--state-file path]", file=target)
@@ -235,18 +251,28 @@ def _state_summary(args: list[str]) -> int:
     if not args or not file_exists(args[0]):
         print_json({"ok": False, "error": "file_not_found"})
         return 1
-    print_json(
-        {
-            "ok": True,
-            "epic": find_frontmatter_value(args[0], "epic"),
-            "epicName": find_frontmatter_value(args[0], "epicName"),
-            "currentStory": find_frontmatter_value(args[0], "currentStory"),
-            "currentStep": find_frontmatter_value(args[0], "currentStep"),
-            "status": find_frontmatter_value(args[0], "status"),
-            "lastUpdated": find_frontmatter_value(args[0], "lastUpdated"),
-            "lastAction": extract_last_action(args[0]),
-        }
+    fields = parse_simple_frontmatter(read_text(args[0]))
+    snapshot_file, snapshot_hash, policy_version, legacy_policy, policy_error = summarize_state_policy_fields(
+        fields,
+        project_root=get_project_root(),
     )
+    payload = {
+        "ok": True,
+        "epic": str(fields.get("epic") or ""),
+        "epicName": str(fields.get("epicName") or ""),
+        "currentStory": str(fields.get("currentStory") or ""),
+        "currentStep": str(fields.get("currentStep") or ""),
+        "status": str(fields.get("status") or ""),
+        "lastUpdated": str(fields.get("lastUpdated") or ""),
+        "policyVersion": policy_version,
+        "policySnapshotFile": snapshot_file,
+        "policySnapshotHash": snapshot_hash,
+        "legacyPolicy": legacy_policy,
+        "lastAction": extract_last_action(args[0]),
+    }
+    if policy_error:
+        payload["policyError"] = policy_error
+    print_json(payload)
     return 0
 
 
@@ -278,9 +304,26 @@ def _state_update(args: list[str]) -> int:
 def _escalate(args: list[str]) -> int:
     trigger = args[0] if args else ""
     context = args[1] if len(args) > 1 else ""
+    state_file = ""
+    idx = 2
+    try:
+        while idx < len(args):
+            if args[idx] == "--state-file":
+                state_file = _flag_value(args, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"escalate": True, "reason": str(exc)})
+        return 0
+    try:
+        policy = load_runtime_policy(get_project_root(), state_file=state_file)
+    except (FileNotFoundError, PolicyError) as exc:
+        print_json({"escalate": True, "reason": str(exc)})
+        return 0
     if trigger == "review-loop":
         cycles = _parse_context_int(context, "cycles")
-        limit = int(os.environ.get("MAX_REVIEW_CYCLES", "5"))
+        limit = review_max_cycles(policy)
         if cycles >= limit:
             print_json({"escalate": True, "reason": f"Review loop exceeded max cycles ({cycles}/{limit})"})
         else:
@@ -288,7 +331,7 @@ def _escalate(args: list[str]) -> int:
         return 0
     if trigger == "session-crash":
         retries = _parse_context_int(context, "retries")
-        limit = int(os.environ.get("MAX_CRASH_RETRIES", "2"))
+        limit = crash_max_retries(policy)
         if retries >= limit:
             print_json({"escalate": True, "reason": f"Session crashed after {retries} retries"})
         else:
@@ -364,11 +407,71 @@ def _verify_code_review(args: list[str]) -> int:
     if not args:
         print_json({"verified": False, "reason": "story_key_required"})
         return 1
-    payload = verify_code_review_completion(get_project_root(), args[0])
+    state_file = ""
+    tail = args[1:]
+    try:
+        idx = 0
+        while idx < len(tail):
+            if tail[idx] == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"verified": False, "reason": "review_contract_invalid", "input": args[0], "error": str(exc)})
+        return 1
+    payload = verify_code_review_completion(get_project_root(), args[0], state_file=state_file or None)
     print_json(payload)
     return 0 if bool(payload.get("verified")) else 1
+
+
+def _verify_step(args: list[str]) -> int:
+    if len(args) < 2:
+        print_json({"verified": False, "reason": "step_and_story_required"})
+        return 1
+    step, story_key = args[:2]
+    state_file = ""
+    output_file = ""
+    tail = args[2:]
+    try:
+        idx = 0
+        while idx < len(tail):
+            arg = tail[idx]
+            if arg in {"--state-file", "--output-file"}:
+                if idx + 1 >= len(tail) or not tail[idx + 1].strip() or tail[idx + 1].startswith("--"):
+                    raise PolicyError(f"{arg} requires a value")
+                if arg == "--state-file":
+                    state_file = tail[idx + 1]
+                else:
+                    output_file = tail[idx + 1]
+                idx += 2
+                continue
+            idx += 1
+        contract = resolve_success_contract(get_project_root(), step, state_file=state_file or None)
+        verifier = str(contract.get("verifier") or "").strip()
+        if not verifier:
+            raise PolicyError(f"missing success verifier for {step}")
+        payload = run_success_verifier(
+            verifier,
+            project_root=get_project_root(),
+            story_key=story_key,
+            output_file=output_file,
+            contract=contract,
+        )
+        exit_code = 0
+    except (FileNotFoundError, PolicyError, ValueError) as exc:
+        payload = {"verified": False, "step": step, "input": story_key, "reason": "verifier_contract_invalid", "error": str(exc)}
+        exit_code = 1
+    print_json(payload)
+    return exit_code
 
 
 def _parse_context_int(context: str, key: str) -> int:
     match = re.search(rf"{re.escape(key)}=(\d+)", context)
     return int(match.group(1)) if match else 0
+
+
+def _flag_value(args: list[str], idx: int, flag: str) -> str:
+    if idx + 1 >= len(args) or not args[idx + 1].strip() or args[idx + 1].startswith("--"):
+        raise PolicyError(f"{flag} requires a value")
+    return args[idx + 1]

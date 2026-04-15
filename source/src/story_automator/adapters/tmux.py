@@ -18,6 +18,7 @@ from ..core.tmux_runtime import (
     project_slug,
     save_session_state,
     session_status,
+    skill_prefix,
     tmux_display,
     tmux_has_session,
     tmux_kill_session,
@@ -35,11 +36,6 @@ class TmuxStatus:
     active_task: str
     wait_estimate: int
     session_state: str
-
-
-def skill_prefix(agent: str) -> str:
-    return "none" if agent == "codex" else "bmad-"
-
 
 def tmux_new_session(session: str, root: str | Path, selected_agent: str) -> tuple[str, int]:
     return run_cmd(

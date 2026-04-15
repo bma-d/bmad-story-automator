@@ -76,7 +76,7 @@ def agent_cli(agent: str) -> str:
 
 
 def skill_prefix(agent: str) -> str:
-    return "none" if agent == "codex" else "/bmad-bmm-"
+    return "none" if agent == "codex" else "bmad-"
 
 
 def session_paths(session: str, project_root: str | None = None) -> SessionPaths:
@@ -138,7 +138,7 @@ def update_session_state(path: str | Path, **updates: object) -> dict[str, objec
     target = Path(path)
     state = load_session_state(target)
     state.update(updates)
-    state["updatedAt"] = str(state.get("updatedAt") or iso_now())
+    state["updatedAt"] = iso_now()
     save_session_state(target, state)
     return state
 
@@ -231,7 +231,7 @@ def heartbeat_check(
 
     cpu = _process_cpu(child_pid)
     if _pid_alive(child_pid):
-        return (("alive" if int(cpu) > 0 else "idle"), cpu, str(child_pid), prompt)
+        return (("alive" if cpu > 0.1 else "idle"), cpu, str(child_pid), prompt)
 
     time.sleep(RECONCILE_GRACE_SECONDS)
     status = session_status(session, full=False, codex=selected_agent == "codex", project_root=project_root, mode=resolved_mode)
@@ -1181,6 +1181,10 @@ def _pid_alive(pid: int) -> bool:
         return False
     try:
         os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
     except OSError:
         return False
     return True

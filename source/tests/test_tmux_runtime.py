@@ -13,8 +13,10 @@ from story_automator.core.tmux_runtime import (
     _check_prompt_visible,
     cleanup_stale_terminal_artifacts,
     command_exists,
+    heartbeat_check,
     load_session_state,
     pane_status,
+    skill_prefix,
     save_session_state,
     session_paths,
     session_status,
@@ -22,6 +24,7 @@ from story_automator.core.tmux_runtime import (
     tmux_kill_session,
     _runner_session_status,
     _terminal_runner_status,
+    update_session_state,
 )
 
 
@@ -94,6 +97,25 @@ class TmuxRuntimeIntegrationTests(unittest.TestCase):
 
 
 class TmuxRuntimeStateTests(unittest.TestCase):
+    def test_skill_prefix_matches_pure_skill_layout(self) -> None:
+        self.assertEqual(skill_prefix("claude"), "bmad-")
+        self.assertEqual(skill_prefix("codex"), "none")
+
+    def test_update_session_state_refreshes_updated_at(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "state.json"
+            save_session_state(
+                state_path,
+                {
+                    "updatedAt": "2026-04-14T18:44:00Z",
+                    "lifecycle": "created",
+                },
+            )
+            with mock.patch("story_automator.core.tmux_runtime.iso_now", return_value="2026-04-14T18:45:00Z"):
+                state = update_session_state(state_path, lifecycle="running")
+            self.assertEqual(state["updatedAt"], "2026-04-14T18:45:00Z")
+            self.assertEqual(load_session_state(state_path)["updatedAt"], "2026-04-14T18:45:00Z")
+
     def test_check_prompt_visible_accepts_claude_prompt_before_status_panel(self) -> None:
         capture = "\n".join(
             [
@@ -227,6 +249,46 @@ class TmuxRuntimeStateTests(unittest.TestCase):
 
             for path in (paths.state, paths.command, paths.runner, paths.output):
                 self.assertFalse(path.exists(), f"expected stale artifact removal for {path}")
+
+    def test_pane_status_treats_fractional_cpu_as_alive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session = "sa-test-fractional-cpu"
+            paths = session_paths(session, temp_dir)
+            save_session_state(
+                paths.state,
+                {
+                    "schemaVersion": 1,
+                    "session": session,
+                    "agent": "codex",
+                    "projectRoot": temp_dir,
+                    "paneId": "%1",
+                    "panePid": 10,
+                    "runnerPid": 11,
+                    "childPid": 12,
+                    "commandFile": str(paths.command),
+                    "outputHint": str(paths.output),
+                    "createdAt": "2026-04-14T18:43:59Z",
+                    "startedAt": "2026-04-14T18:43:59Z",
+                    "finishedAt": "",
+                    "updatedAt": "2026-04-14T18:44:00Z",
+                    "lifecycle": "running",
+                    "result": "",
+                    "exitCode": "",
+                    "failureReason": "",
+                },
+            )
+            with (
+                mock.patch("story_automator.core.tmux_runtime._process_cpu", return_value=0.5),
+                mock.patch("story_automator.core.tmux_runtime._pid_alive", return_value=True),
+                mock.patch("story_automator.core.tmux_runtime._check_prompt_visible", return_value="false"),
+                mock.patch("story_automator.core.tmux_runtime.tmux_has_session", return_value=True),
+            ):
+                status, cpu, pid, prompt = heartbeat_check(session, "codex", project_root=temp_dir, mode="runner")
+
+            self.assertEqual(status, "alive")
+            self.assertEqual(cpu, 0.5)
+            self.assertEqual(pid, "12")
+            self.assertEqual(prompt, "false")
 
 
 if __name__ == "__main__":

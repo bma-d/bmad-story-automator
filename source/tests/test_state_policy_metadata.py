@@ -10,7 +10,7 @@ from pathlib import Path
 
 from story_automator.commands.orchestrator import cmd_orchestrator_helper
 from story_automator.commands.state import cmd_build_state_doc, cmd_validate_state
-from story_automator.commands.tmux import _build_cmd
+from story_automator.commands.tmux import _build_cmd, cmd_tmux_wrapper
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -261,6 +261,26 @@ class StatePolicyMetadataTests(unittest.TestCase):
         self.assertNotIn("--state-file", rendered)
         self.assertNotIn(str(state_file), rendered)
 
+    def test_build_cmd_rejects_incomplete_state_file_flag(self) -> None:
+        stderr = io.StringIO()
+        with patch_env(self.project_root), redirect_stderr(stderr):
+            code = _build_cmd(["review", "1.1", "--state-file"])
+        self.assertEqual(code, 1)
+        self.assertIn("--state-file requires a value", stderr.getvalue())
+
+    def test_tmux_subcommand_help_matches_step_preflight_contract(self) -> None:
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cmd_tmux_wrapper(["spawn", "--help"])
+        self.assertEqual(code, 0)
+        self.assertIn("--command", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cmd_tmux_wrapper(["build-cmd", "--help"])
+        self.assertEqual(code, 0)
+        self.assertIn("--state-file", stdout.getvalue())
+
     def test_build_state_doc_returns_json_on_policy_snapshot_failure(self) -> None:
         override_dir = self.project_root / "_bmad" / "bmm"
         override_dir.mkdir(parents=True, exist_ok=True)
@@ -292,6 +312,15 @@ class StatePolicyMetadataTests(unittest.TestCase):
             code = _build_cmd(["ship", "1.1"])
         self.assertEqual(code, 1)
         self.assertIn("unknown step: ship", stderr.getvalue())
+
+    def test_escalate_returns_json_on_incomplete_state_file_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["escalate", "review-loop", "cycles=1", "--state-file"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["escalate"])
+        self.assertEqual(payload["reason"], "--state-file requires a value")
 
     def _build_state(self) -> Path:
         stdout = io.StringIO()

@@ -57,6 +57,8 @@ def load_runtime_policy(
     resolved_state, source = resolve_policy_state_file(root, state_file)
     if resolved_state:
         state_path = Path(resolved_state)
+        if source in {"env", "marker"} and not state_path.is_file():
+            raise PolicyError(f"{source} state file missing: {state_path}")
         if source != "explicit" and not state_path.is_file():
             return load_effective_policy(str(root), resolve_assets=resolve_assets)
         return load_policy_for_state(str(state_path), project_root=str(root), resolve_assets=resolve_assets)
@@ -92,9 +94,13 @@ def load_policy_snapshot(
     path = Path(snapshot_file)
     if not path.is_absolute():
         path = root / path
+    path = _ensure_within(path, root, "policy snapshot")
     if not path.is_file():
         raise PolicyError(f"policy snapshot missing: {path}")
-    raw = read_text(path)
+    try:
+        raw = read_text(path)
+    except OSError as exc:
+        raise PolicyError(f"policy snapshot unreadable: {path}") from exc
     actual_hash = md5_hex8(raw)
     if expected_hash and actual_hash != expected_hash:
         raise PolicyError(f"policy snapshot hash mismatch: expected {expected_hash}, got {actual_hash}")
@@ -117,7 +123,10 @@ def load_policy_for_state(
     resolve_assets: bool = True,
 ) -> dict[str, Any]:
     root = Path(project_root or get_project_root()).resolve()
-    fields = parse_simple_frontmatter(read_text(state_file))
+    try:
+        fields = parse_simple_frontmatter(read_text(state_file))
+    except OSError as exc:
+        raise PolicyError(f"state file unreadable: {state_file}") from exc
     snapshot_file, snapshot_hash, legacy_mode = _state_policy_mode(fields)
     if not legacy_mode:
         return load_policy_snapshot(
@@ -152,16 +161,17 @@ def resolve_policy_state_file(project_root: str | Path | None = None, state_file
         return str(_resolve_state_path(root, explicit)), "explicit"
     env_state = os.environ.get("STORY_AUTOMATOR_STATE_FILE", "").strip()
     if env_state:
-        return str(_resolve_state_path(root, Path(env_state).expanduser())), "env"
+        return str(_resolve_state_path(root, Path(env_state).expanduser(), allow_outside=False, label="env state file")), "env"
     marker = root / ".claude" / ".story-automator-active"
     if marker.is_file():
         try:
             payload = _read_json(marker)
-        except PolicyError:
-            return "", ""
+        except PolicyError as exc:
+            raise PolicyError(f"active-run marker invalid: {exc}") from exc
         marker_state = str(payload.get("stateFile") or "").strip()
-        if marker_state:
-            return str(_resolve_state_path(root, Path(marker_state).expanduser())), "marker"
+        if not marker_state:
+            raise PolicyError("active-run marker missing stateFile")
+        return str(_resolve_state_path(root, Path(marker_state).expanduser(), allow_outside=False, label="marker state file")), "marker"
     return "", ""
 
 
@@ -448,8 +458,11 @@ def _display_path(path: Path, project_root: Path) -> str:
         return str(path.resolve())
 
 
-def _resolve_state_path(project_root: Path, path: Path) -> Path:
-    return path if path.is_absolute() else project_root / path
+def _resolve_state_path(project_root: Path, path: Path, *, allow_outside: bool = True, label: str = "state file") -> Path:
+    candidate = path if path.is_absolute() else project_root / path
+    if allow_outside:
+        return candidate.resolve()
+    return _ensure_within(candidate, project_root.resolve(), label)
 
 
 def _set_or_verify_hash(payload: dict[str, Any], *, path_key: str, hash_key: str, label: str) -> None:

@@ -177,9 +177,11 @@ Changes:
 
 ### `payload/.claude/skills/bmad-story-automator-review/workflow.yaml`
 
-Add a machine contract pointer, for example:
+Keep this file human-facing only.
 
-- `contract: "./contract.json"`
+The machine contract should stay in step policy:
+
+- `steps.review.success.contractFile = ".claude/skills/bmad-story-automator-review/contract.json"`
 
 ### New: `payload/.claude/skills/bmad-story-automator-review/contract.json`
 
@@ -247,4 +249,3 @@ To keep files under roughly 500 LOC:
 - `orchestrator_parse.py`: parser command plus schema validation
 
 If `runtime_policy.py` grows too large, split only after phase 1 lands.
-

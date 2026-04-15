@@ -42,6 +42,30 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertTrue(payload["verified"])
         self.assertEqual(payload["actualMatches"], 1)
 
+    def test_create_story_artifact_rejects_glob_that_escapes_project_root(self) -> None:
+        with self.assertRaisesRegex(PolicyError, "success.config.glob escapes project root"):
+            create_story_artifact(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"config": {"glob": "../other/{story_prefix}-*.md", "expectedMatches": 1}},
+            )
+
+    def test_create_story_artifact_rejects_glob_outside_artifacts_dir(self) -> None:
+        with self.assertRaisesRegex(PolicyError, "success.config.glob must stay within _bmad-output/implementation-artifacts"):
+            create_story_artifact(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"config": {"glob": "docs/{story_prefix}-*.md", "expectedMatches": 1}},
+            )
+
+    def test_create_story_artifact_rejects_absolute_glob(self) -> None:
+        with self.assertRaisesRegex(PolicyError, "success.config.glob must be relative to _bmad-output/implementation-artifacts"):
+            create_story_artifact(
+                project_root=str(self.project_root),
+                story_key="1.2",
+                contract={"config": {"glob": "/tmp/{story_prefix}-*.md", "expectedMatches": 1}},
+            )
+
     def test_review_completion_uses_contract_done_values(self) -> None:
         self._write_story("1-2-example", status="approved")
         contract = self._write_review_contract(
@@ -262,6 +286,21 @@ class SuccessVerifierTests(unittest.TestCase):
         self.assertFalse(payload["valid"])
         self.assertIn("missing-state.md", payload["reason"])
 
+    def test_review_wrapper_normalizes_directory_state_file(self) -> None:
+        payload = verify_code_review_completion(str(self.project_root), "1.2", state_file=self.project_root)
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "review_contract_invalid")
+        self.assertIn("state file unreadable", str(payload.get("error")))
+
+    def test_validate_story_creation_check_returns_compat_schema_on_directory_state_file(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_validate_story_creation(["check", "1.2", "--state-file", str(self.project_root)])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["valid"])
+        self.assertIn("state file unreadable", payload["reason"])
+
     def test_review_wrapper_honors_empty_injected_contract(self) -> None:
         self._write_story("1-2-example", status="done")
         self._write_override(
@@ -296,6 +335,16 @@ class SuccessVerifierTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertFalse(payload["verified"])
         self.assertEqual(payload["reason"], "verifier_contract_invalid")
+        self.assertEqual(payload["error"], "--state-file requires a value")
+
+    def test_verify_code_review_rejects_incomplete_state_file_flag(self) -> None:
+        stdout = io.StringIO()
+        with patch_env(self.project_root), redirect_stdout(stdout):
+            code = cmd_orchestrator_helper(["verify-code-review", "1.2", "--state-file"])
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["reason"], "review_contract_invalid")
         self.assertEqual(payload["error"], "--state-file requires a value")
 
     def test_validate_story_creation_check_returns_compat_schema_on_bad_counts(self) -> None:

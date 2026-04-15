@@ -214,8 +214,9 @@ Prompt templates should support simple substitution only:
 
 - `{{story_id}}`
 - `{{story_prefix}}`
-- `{{skill_path}}`
-- `{{workflow_path}}`
+- `{{label}}`
+- `{{skill_line}}`
+- `{{workflow_line}}`
 - `{{instructions_line}}`
 - `{{checklist_line}}`
 - `{{template_line}}`

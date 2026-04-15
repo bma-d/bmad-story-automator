@@ -73,12 +73,13 @@ def create_story_artifact(
     raw_glob = str(config.get("glob") or "_bmad-output/implementation-artifacts/{story_prefix}-*.md")
     expected = _parse_int(config.get("expectedMatches", 1), "success.config.expectedMatches", minimum=0)
     pattern = _format_story_pattern(raw_glob, norm)
-    matches = sorted(Path(project_root).glob(pattern))
+    root, safe_pattern = _resolve_artifact_glob(project_root, pattern)
+    matches = sorted(root.glob(safe_pattern))
     payload: dict[str, object] = {
         "verified": len(matches) == expected,
         "story": norm.key,
         "source": "artifact_glob",
-        "pattern": pattern,
+        "pattern": safe_pattern,
         "expectedMatches": expected,
         "actualMatches": len(matches),
         "matches": [str(match) for match in matches],
@@ -174,6 +175,24 @@ def _format_story_pattern(pattern: str, story) -> str:
 def _story_artifact_path(project_root: str, story_prefix: str) -> Path | None:
     matches = sorted((Path(project_root) / "_bmad-output" / "implementation-artifacts").glob(f"{story_prefix}-*.md"))
     return matches[0] if matches else None
+
+
+def _resolve_artifact_glob(project_root: str, pattern: str) -> tuple[Path, str]:
+    root = Path(project_root).resolve()
+    artifacts_root = (root / "_bmad-output" / "implementation-artifacts").resolve()
+    raw = Path(pattern)
+    if raw.is_absolute():
+        raise PolicyError("success.config.glob must be relative to _bmad-output/implementation-artifacts")
+    resolved = (root / raw).resolve()
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as exc:
+        raise PolicyError("success.config.glob escapes project root") from exc
+    try:
+        resolved.relative_to(artifacts_root)
+    except ValueError as exc:
+        raise PolicyError("success.config.glob must stay within _bmad-output/implementation-artifacts") from exc
+    return root, str(relative)
 
 
 def _load_review_contract(project_root: str, contract: dict[str, Any]) -> dict[str, Any]:

@@ -127,6 +127,14 @@ class RuntimePolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(PolicyError, "policy data path escapes allowed roots"):
             load_effective_policy(str(self.project_root))
 
+    def test_snapshot_file_cannot_escape_project_root(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        source_path = self.project_root / snapshot["policySnapshotFile"]
+        external = self.project_root.parent / "external-snapshot.json"
+        external.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+        with self.assertRaisesRegex(PolicyError, "policy snapshot escapes allowed root"):
+            load_policy_snapshot(str(external), project_root=str(self.project_root), expected_hash=snapshot["policySnapshotHash"])
+
     def test_snapshot_detects_prompt_template_drift(self) -> None:
         snapshot = snapshot_effective_policy(str(self.project_root))
         prompt = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "prompts" / "create.md"
@@ -138,19 +146,53 @@ class RuntimePolicyTests(unittest.TestCase):
                 expected_hash=snapshot["policySnapshotHash"],
             )
 
-    def test_missing_marker_state_falls_back_to_effective_policy(self) -> None:
+    def test_snapshot_detects_parse_schema_drift(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        schema = self.project_root / ".claude" / "skills" / "bmad-story-automator" / "data" / "parse" / "create.json"
+        schema.write_text('{"requiredKeys":["status"],"schema":{"status":"SUCCESS|FAILURE|AMBIGUOUS"}}\n', encoding="utf-8")
+        with self.assertRaisesRegex(PolicyError, "policy parse schema hash mismatch"):
+            load_policy_snapshot(
+                snapshot["policySnapshotFile"],
+                project_root=str(self.project_root),
+                expected_hash=snapshot["policySnapshotHash"],
+            )
+
+    def test_snapshot_detects_success_contract_drift(self) -> None:
+        snapshot = snapshot_effective_policy(str(self.project_root))
+        contract = self.project_root / ".claude" / "skills" / "bmad-story-automator-review" / "contract.json"
+        contract.write_text('{"doneValues":["approved"],"sourceOrder":["story-file"],"syncSprintStatus":false}\n', encoding="utf-8")
+        with self.assertRaisesRegex(PolicyError, "policy success contract hash mismatch"):
+            load_policy_snapshot(
+                snapshot["policySnapshotFile"],
+                project_root=str(self.project_root),
+                expected_hash=snapshot["policySnapshotHash"],
+            )
+
+    def test_missing_marker_state_raises_policy_error(self) -> None:
         marker = self.project_root / ".claude" / ".story-automator-active"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps({"stateFile": "missing.md"}), encoding="utf-8")
-        policy = load_runtime_policy(str(self.project_root))
-        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
+        with self.assertRaisesRegex(PolicyError, "marker state file missing"):
+            load_runtime_policy(str(self.project_root))
 
-    def test_malformed_marker_falls_back_to_effective_policy(self) -> None:
+    def test_marker_state_cannot_escape_project_root(self) -> None:
+        marker = self.project_root / ".claude" / ".story-automator-active"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"stateFile": "../outside.md"}), encoding="utf-8")
+        with self.assertRaisesRegex(PolicyError, "marker state file escapes allowed root"):
+            load_runtime_policy(str(self.project_root))
+
+    def test_malformed_marker_raises_policy_error(self) -> None:
         marker = self.project_root / ".claude" / ".story-automator-active"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("{bad json", encoding="utf-8")
-        policy = load_runtime_policy(str(self.project_root))
-        self.assertEqual(policy["workflow"]["repeat"]["review"]["maxCycles"], 5)
+        with self.assertRaisesRegex(PolicyError, "active-run marker invalid"):
+            load_runtime_policy(str(self.project_root))
+
+    def test_env_state_cannot_escape_project_root(self) -> None:
+        with patch.dict("os.environ", {"STORY_AUTOMATOR_STATE_FILE": "../outside.md"}, clear=False):
+            with self.assertRaisesRegex(PolicyError, "env state file escapes allowed root"):
+                load_runtime_policy(str(self.project_root))
 
     def test_legacy_state_uses_bundled_defaults_without_override_or_env(self) -> None:
         self._write_override({"workflow": {"repeat": {"review": {"maxCycles": 1}}}})
@@ -202,6 +244,10 @@ class RuntimePolicyTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(PolicyError, "state policy metadata contradictory"):
             load_runtime_policy(str(self.project_root), state_file=str(state_file))
+
+    def test_explicit_directory_state_file_raises_policy_error(self) -> None:
+        with self.assertRaisesRegex(PolicyError, "state file unreadable"):
+            load_runtime_policy(str(self.project_root), state_file=str(self.project_root))
 
     def _install_bundle(self) -> None:
         source_skill = REPO_ROOT / "payload" / ".claude" / "skills" / "bmad-story-automator"

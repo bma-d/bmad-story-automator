@@ -66,6 +66,9 @@ def parse_output_action(args: list[str]) -> int:
     if not _has_required_keys(payload, parse_contract.get("requiredKeys") or []):
         print_json({"status": "error", "reason": "sub-agent returned invalid json"})
         return 1
+    if not _matches_schema(payload, parse_contract.get("schema") or {}):
+        print_json({"status": "error", "reason": "sub-agent returned invalid json"})
+        return 1
     print(json.dumps(payload, separators=(",", ":")))
     return 0
 
@@ -95,3 +98,25 @@ def _has_required_keys(payload: object, required_keys: list[Any]) -> bool:
     if not isinstance(payload, dict):
         return False
     return all(isinstance(key, str) and key in payload for key in required_keys)
+
+
+def _matches_schema(payload: object, schema: object) -> bool:
+    if isinstance(schema, dict):
+        if not isinstance(payload, dict):
+            return False
+        for key, child_schema in schema.items():
+            if key not in payload or not _matches_schema(payload[key], child_schema):
+                return False
+        return True
+    if not isinstance(schema, str):
+        return False
+    rule = schema.strip()
+    if rule == "integer":
+        return isinstance(payload, int) and not isinstance(payload, bool)
+    if rule == "true|false":
+        return isinstance(payload, bool)
+    if rule == "path or null":
+        return payload is None or (isinstance(payload, str) and bool(payload.strip()))
+    if "|" in rule and " " not in rule:
+        return isinstance(payload, str) and payload in rule.split("|")
+    return isinstance(payload, str) and bool(payload.strip())

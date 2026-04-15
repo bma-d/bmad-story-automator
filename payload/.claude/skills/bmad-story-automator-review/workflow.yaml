@@ -16,5 +16,4 @@ sprint_status: "{implementation_artifacts}/sprint-status.yaml"
 # Workflow components
 instructions: "./instructions.xml"
 validation: "./checklist.md"
-contract: "./contract.json"
 standalone: true

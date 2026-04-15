@@ -249,6 +249,8 @@ verify_common_install() {
   assert_contains 'orchestrator-helper verify-step create {story_id} --state-file "$state_file"' "$story_dir/steps-c/step-03-execute.md"
   assert_contains 'build-cmd create {story_id} --agent "$current_agent" --state-file "$state_file"' "$story_dir/steps-c/step-03-execute.md"
   assert_contains 'build-cmd dev {story_id} --agent "$current_agent" --state-file "$state_file"' "$story_dir/steps-c/step-03-execute.md"
+  assert_contains 'build-cmd auto {story_id} --agent "$current_agent" --state-file "$state_file"' "$story_dir/steps-c/step-03a-execute-review.md"
+  assert_contains 'parse-output "$review_log" review --state-file "$state_file"' "$story_dir/steps-c/step-03a-execute-review.md"
   assert_contains 'validation_passed=$(echo "$validation" | jq -r '\''.verified'\'')' "$story_dir/data/retry-fallback-implementation.md"
   assert_contains 'build-cmd {step} {story_id} --agent "$current_agent" --state-file "$state_file"' "$story_dir/data/retry-fallback-implementation.md"
   assert_contains 'orchestrator-helper verify-step create 5.3 --state-file "$state_file"' "$story_dir/data/monitoring-pattern.md"

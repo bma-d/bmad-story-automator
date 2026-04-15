@@ -91,6 +91,26 @@ class OrchestratorParseTests(unittest.TestCase):
         self.assertIn("issues_found", payload)
         self.assertIn("all_fixed", payload)
 
+    def test_review_output_rejects_invalid_nested_shape(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"SUCCESS","issues_found":{"critical":"0","high":0,"medium":1,"low":0},"all_fixed":true,"summary":"ok","next_action":"proceed"}', 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "review"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "sub-agent returned invalid json")
+
+    def test_review_output_rejects_invalid_enum_value(self) -> None:
+        stdout = io.StringIO()
+        with patch.dict("os.environ", {"PROJECT_ROOT": str(self.project_root)}), patch(
+            "story_automator.commands.orchestrator_parse.run_cmd",
+            return_value=CommandResult('{"status":"BROKEN","issues_found":{"critical":0,"high":0,"medium":1,"low":0},"all_fixed":true,"summary":"ok","next_action":"proceed"}', 0),
+        ), redirect_stdout(stdout):
+            code = parse_output_action([str(self.output_file), "review"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["reason"], "sub-agent returned invalid json")
+
     def test_state_file_keeps_pinned_parse_contract_after_override_changes(self) -> None:
         state_file = self._build_state()
         override_dir = self.project_root / "_bmad" / "bmm"

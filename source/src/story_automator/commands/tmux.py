@@ -98,7 +98,7 @@ def _usage(code: int) -> int:
     print("  kill <session_name>", file=target)
     print("  kill-all [--project-only]", file=target)
     print("  exists <session_name>", file=target)
-    print("  build-cmd <step> <story_id> [--agent TYPE] [extra_instruction]", file=target)
+    print("  build-cmd <step> <story_id> [--agent TYPE] [--state-file PATH] [extra_instruction]", file=target)
     print("  project-slug", file=target)
     print("  project-hash", file=target)
     print("  story-suffix <story_id>", file=target)
@@ -109,6 +109,8 @@ def _usage(code: int) -> int:
 
 
 def _spawn(args: list[str]) -> int:
+    if args and args[0] in {"--help", "-h"}:
+        return _usage(0)
     if len(args) < 3:
         return _usage(1)
     step, epic, story_id = args[:3]
@@ -169,6 +171,8 @@ def _spawn(args: list[str]) -> int:
 
 
 def _build_cmd(args: list[str]) -> int:
+    if args and args[0] in {"--help", "-h"}:
+        return _usage(0)
     if len(args) < 2:
         return _usage(1)
     step, story_id = args[:2]
@@ -177,17 +181,21 @@ def _build_cmd(args: list[str]) -> int:
     tail = args[2:]
     idx = 0
     state_file = ""
-    while idx < len(tail):
-        if tail[idx] == "--agent" and idx + 1 < len(tail):
-            agent = tail[idx + 1]
-            idx += 2
-            continue
-        if tail[idx] == "--state-file" and idx + 1 < len(tail):
-            state_file = tail[idx + 1]
-            idx += 2
-            continue
-        extra = f"{extra} {tail[idx]}".strip()
-        idx += 1
+    try:
+        while idx < len(tail):
+            if tail[idx] == "--agent":
+                agent = _flag_value(tail, idx, "--agent")
+                idx += 2
+                continue
+            if tail[idx] == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            extra = f"{extra} {tail[idx]}".strip()
+            idx += 1
+    except PolicyError as exc:
+        print(str(exc), file=__import__("sys").stderr)
+        return 1
     agent = agent or agent_type()
     story_prefix = story_id.replace(".", "-")
     root = get_project_root()
@@ -696,8 +704,12 @@ def cmd_monitor_session(args: list[str]) -> int:
             story_key = args[idx + 1]
             idx += 2
             continue
-        elif arg == "--state-file" and idx + 1 < len(args):
-            state_file = args[idx + 1]
+        elif arg == "--state-file":
+            try:
+                state_file = _flag_value(args, idx, "--state-file")
+            except PolicyError as exc:
+                print(str(exc), file=__import__("sys").stderr)
+                return 1
             idx += 2
             continue
         elif arg == "--project-root" and idx + 1 < len(args):
@@ -798,3 +810,9 @@ def _verify_monitor_completion(
     except PolicyError:
         return ({"verified": False, "reason": "verifier_contract_invalid"}, verifier_name)
     return (result, verifier_name)
+
+
+def _flag_value(args: list[str], idx: int, flag: str) -> str:
+    if idx + 1 >= len(args) or not args[idx + 1].strip() or args[idx + 1].startswith("--"):
+        raise PolicyError(f"{flag} requires a value")
+    return args[idx + 1]

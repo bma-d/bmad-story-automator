@@ -306,12 +306,16 @@ def _escalate(args: list[str]) -> int:
     context = args[1] if len(args) > 1 else ""
     state_file = ""
     idx = 2
-    while idx < len(args):
-        if args[idx] == "--state-file" and idx + 1 < len(args):
-            state_file = args[idx + 1]
-            idx += 2
-            continue
-        idx += 1
+    try:
+        while idx < len(args):
+            if args[idx] == "--state-file":
+                state_file = _flag_value(args, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"escalate": True, "reason": str(exc)})
+        return 0
     try:
         policy = load_runtime_policy(get_project_root(), state_file=state_file)
     except (FileNotFoundError, PolicyError) as exc:
@@ -405,9 +409,17 @@ def _verify_code_review(args: list[str]) -> int:
         return 1
     state_file = ""
     tail = args[1:]
-    for idx, arg in enumerate(tail):
-        if arg == "--state-file" and idx + 1 < len(tail):
-            state_file = tail[idx + 1]
+    try:
+        idx = 0
+        while idx < len(tail):
+            if tail[idx] == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"verified": False, "reason": "review_contract_invalid", "input": args[0], "error": str(exc)})
+        return 1
     payload = verify_code_review_completion(get_project_root(), args[0], state_file=state_file or None)
     print_json(payload)
     return 0 if bool(payload.get("verified")) else 1
@@ -457,3 +469,9 @@ def _verify_step(args: list[str]) -> int:
 def _parse_context_int(context: str, key: str) -> int:
     match = re.search(rf"{re.escape(key)}=(\d+)", context)
     return int(match.group(1)) if match else 0
+
+
+def _flag_value(args: list[str], idx: int, flag: str) -> str:
+    if idx + 1 >= len(args) or not args[idx + 1].strip() or args[idx + 1].startswith("--"):
+        raise PolicyError(f"{flag} requires a value")
+    return args[idx + 1]

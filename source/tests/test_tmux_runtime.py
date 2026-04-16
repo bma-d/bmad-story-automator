@@ -11,11 +11,13 @@ from pathlib import Path
 from story_automator.core.tmux_runtime import (
     PaneSnapshot,
     _check_prompt_visible,
+    _runner_file_content,
     cleanup_stale_terminal_artifacts,
     command_exists,
     heartbeat_check,
     load_session_state,
     pane_status,
+    resolve_command_shell,
     skill_prefix,
     save_session_state,
     session_paths,
@@ -100,6 +102,22 @@ class TmuxRuntimeStateTests(unittest.TestCase):
     def test_skill_prefix_matches_pure_skill_layout(self) -> None:
         self.assertEqual(skill_prefix("claude"), "bmad-")
         self.assertEqual(skill_prefix("codex"), "none")
+
+    def test_resolve_command_shell_prefers_tmux_default_shell(self) -> None:
+        with (
+            mock.patch("story_automator.core.tmux_runtime.command_exists", return_value=True),
+            mock.patch("story_automator.core.tmux_runtime.run_cmd", return_value=("/bin/zsh\n", 0)),
+            mock.patch("story_automator.core.tmux_runtime.os.path.isfile", return_value=True),
+            mock.patch("story_automator.core.tmux_runtime.os.access", return_value=True),
+        ):
+            self.assertEqual(resolve_command_shell(), "/bin/zsh")
+
+    def test_runner_file_content_uses_interactive_shell_for_zsh_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = session_paths("sa-test-shell", temp_dir)
+            content = _runner_file_content(paths, "/bin/bash", "/bin/zsh", temp_dir)
+        self.assertIn('COMMAND_SHELL=/bin/zsh', content)
+        self.assertIn('"$COMMAND_SHELL" "$COMMAND_FILE"', content)
 
     def test_update_session_state_refreshes_updated_at(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

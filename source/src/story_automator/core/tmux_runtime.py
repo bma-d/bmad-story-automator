@@ -58,6 +58,14 @@ def runtime_mode() -> str:
     return value if value in VALID_RUNTIME_MODES else "auto"
 
 
+def resolve_command_shell() -> str:
+    for candidate in (_tmux_default_shell(), os.environ.get("SHELL", "").strip(), shutil.which("bash") or ""):
+        resolved = _resolve_shell_path(candidate)
+        if resolved:
+            return resolved
+    return "/bin/sh"
+
+
 def generate_session_name(step: str, epic: str, story_id: str, cycle: str = "") -> str:
     stamp = time.strftime("%y%m%d-%H%M%S", time.localtime())
     suffix = story_id.replace(".", "-")
@@ -334,6 +342,7 @@ def _spawn_runner(session: str, command: str, selected_agent: str, project_root:
     bash_path = shutil.which("bash")
     if not bash_path:
         return ("bash not found\n", 1)
+    command_shell = resolve_command_shell()
 
     root = Path(project_root or get_project_root()).resolve()
     cleanup_stale_terminal_artifacts(str(root))
@@ -341,7 +350,7 @@ def _spawn_runner(session: str, command: str, selected_agent: str, project_root:
     cleanup_runtime_artifacts(session, str(root))
 
     _write_private_text(paths.command, _command_file_content(command), 0o700)
-    _write_private_text(paths.runner, _runner_file_content(paths, bash_path, str(root)), 0o700)
+    _write_private_text(paths.runner, _runner_file_content(paths, bash_path, command_shell, str(root)), 0o700)
 
     create_out, create_code = run_cmd(
         "tmux",
@@ -901,9 +910,10 @@ def _resolve_spawn_mode(mode: str | None) -> str:
     return "runner"
 
 
-def _runner_file_content(paths: SessionPaths, bash_path: str, project_root: str) -> str:
+def _runner_file_content(paths: SessionPaths, bash_path: str, command_shell: str, project_root: str) -> str:
     state_file = shlex.quote(str(paths.state))
     command_file = shlex.quote(str(paths.command))
+    resolved_command_shell = shlex.quote(command_shell)
     root = shlex.quote(project_root)
     python_bin = shlex.quote(sys.executable)
     return f"""#!/usr/bin/env bash
@@ -913,6 +923,7 @@ cd -- {root}
 
 STATE_FILE={state_file}
 COMMAND_FILE={command_file}
+COMMAND_SHELL={resolved_command_shell}
 PYTHON_BIN={python_bin}
 
 write_state() {{
@@ -999,8 +1010,12 @@ if [[ ! -f "$COMMAND_FILE" ]]; then
   exit 127
 fi
 
+run_payload() {{
+  "$COMMAND_SHELL" "$COMMAND_FILE"
+}}
+
 set +e
-"{bash_path}" "$COMMAND_FILE" &
+run_payload &
 child_pid=$!
 started_at="$(now_iso)"
 write_state "running" "" "" "" "$runner_pid" "$child_pid" "$started_at" ""
@@ -1030,12 +1045,29 @@ exit "$exit_code"
 
 
 def _command_file_content(command: str) -> str:
-    return "#!/usr/bin/env bash\nset -euo pipefail\n" + command.rstrip() + "\n"
+    return command.rstrip() + "\n"
 
 
 def _write_private_text(path: Path, data: str, mode: int) -> None:
     atomic_write(path, data)
     path.chmod(mode)
+
+
+def _tmux_default_shell() -> str:
+    if not command_exists("tmux"):
+        return ""
+    output, code = run_cmd("tmux", "show-options", "-gv", "default-shell")
+    if code != 0:
+        return ""
+    return output.strip()
+
+
+def _resolve_shell_path(candidate: str) -> str:
+    if not candidate:
+        return ""
+    if os.path.isabs(candidate):
+        return candidate if os.path.isfile(candidate) and os.access(candidate, os.X_OK) else ""
+    return shutil.which(candidate) or ""
 
 
 def _capture_text(session: str, *, start: int) -> str:

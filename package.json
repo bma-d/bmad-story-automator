@@ -17,8 +17,9 @@
   ],
   "scripts": {
     "pack:dry-run": "npm pack --dry-run",
+    "test:python": "PYTHONPATH=source/src python3 -m unittest discover -s source/tests",
     "test:smoke": "bash scripts/smoke-test.sh",
-    "verify": "npm run pack:dry-run && npm run test:smoke"
+    "verify": "npm run test:python && npm run pack:dry-run && npm run test:smoke"
   },
   "engines": {
     "node": ">=18"

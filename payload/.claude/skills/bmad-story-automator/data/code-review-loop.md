@@ -56,7 +56,7 @@ scripts="$(printf "%s" "{project_root}/.claude/skills/bmad-story-automator/scrip
 session_name=$("$scripts" tmux-wrapper spawn review {epic} {story_id} \
   --agent "$review_agent" \
   --cycle $reviewCycle \
-  --command "$("$scripts" tmux-wrapper build-cmd review {story_id} --agent "$review_agent")")
+  --command "$("$scripts" tmux-wrapper build-cmd review {story_id} --agent "$review_agent" --state-file "$state_file")")
 ```
 
 ### 2. Monitor Session with Verification (v2.2)
@@ -66,7 +66,7 @@ session_name=$("$scripts" tmux-wrapper spawn review {epic} {story_id} \
 # Pass --workflow and --story-key for completion verification
 result=$("$scripts" monitor-session "$session_name" --json --verbose \
   --agent "$review_agent" \
-  --workflow review --story-key {story_id})
+  --workflow review --story-key {story_id} --state-file "$state_file")
 final_state=$(echo "$result" | jq -r '.final_state')
 output_file=$(echo "$result" | jq -r '.output_file')
 ```
@@ -77,7 +77,7 @@ output_file=$(echo "$result" | jq -r '.output_file')
 
 ```bash
 # Sub-agent parsing (haiku, 99% cheaper than main context)
-parsed=$("$scripts" orchestrator-helper parse-output "$output_file" review)
+parsed=$("$scripts" orchestrator-helper parse-output "$output_file" review --state-file "$state_file")
 ```
 
 ### 4. Verify Sprint Status
@@ -159,6 +159,6 @@ file_status=$("$scripts" orchestrator-helper story-file-status {story_id})
 Check if code-review actually completed:
 
 ```bash
-"$scripts" orchestrator-helper verify-code-review {story_id}
+"$scripts" orchestrator-helper verify-code-review {story_id} --state-file "$state_file"
 # Returns: {"verified":true/false, "sprint_status":"...", ...}
 ```

@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from ..core.frontmatter import extract_frontmatter, parse_simple_frontmatter
-from ..core.utils import count_matches, ensure_dir, file_exists, now_utc, now_utc_z, read_text, write_json
+from ..core.runtime_policy import PolicyError, load_policy_for_state, snapshot_effective_policy
+from ..core.utils import count_matches, ensure_dir, file_exists, get_project_root, now_utc, now_utc_z, read_text, write_json
 
 
 def cmd_build_state_doc(args: list[str]) -> int:
@@ -42,6 +43,11 @@ def cmd_build_state_doc(args: list[str]) -> int:
     epic = str(config.get("epic") or "epic")
     safe_epic = re.sub(r"[^a-zA-Z0-9]+", "-", epic).strip("-") or "epic"
     output_path = Path(output_folder) / f"orchestration-{safe_epic}-{stamp}.md"
+    try:
+        snapshot = snapshot_effective_policy(get_project_root())
+    except (FileNotFoundError, PolicyError, ValueError) as exc:
+        write_json({"ok": False, "error": "policy_snapshot_failed", "reason": str(exc)})
+        return 1
     text = read_text(template)
     replacements: dict[str, Any] = {
         "epic": config.get("epic", ""),
@@ -56,6 +62,10 @@ def cmd_build_state_doc(args: list[str]) -> int:
         "aiCommand": config.get("aiCommand", ""),
         "agentsFile": config.get("agentsFile", ""),
         "complexityFile": config.get("complexityFile", ""),
+        "policyVersion": snapshot["policyVersion"],
+        "policySnapshotFile": snapshot["policySnapshotFile"],
+        "policySnapshotHash": snapshot["policySnapshotHash"],
+        "legacyPolicy": False,
     }
     overrides = config.get("overrides", {}) if isinstance(config.get("overrides"), dict) else {}
     text = re.sub(
@@ -228,5 +238,9 @@ def cmd_validate_state(args: list[str]) -> int:
     required("status", lambda value: isinstance(value, str) and value in allowed)
     required("lastUpdated", lambda value: isinstance(value, str) and re.search(r"\d{4}-\d{2}-\d{2}T", value))
     required("aiCommand")
+    try:
+        load_policy_for_state(state)
+    except PolicyError as exc:
+        issues.append(str(exc))
     write_json({"ok": True, "structure": "issues" if issues else "ok", "issues": issues})
     return 0

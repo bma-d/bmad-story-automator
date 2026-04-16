@@ -13,6 +13,7 @@ PYTHONPATH=source/src python3 -m story_automator --help
 
 `npm run verify` expands to:
 
+- `npm run test:python`
 - `npm run pack:dry-run`
 - `npm run test:smoke`
 
@@ -25,15 +26,16 @@ The smoke suite validates:
 - required and optional dependency handling
 - legacy backup behavior
 - installed skill layout
+- installed runtime policy, prompt templates, and parse contracts
 - prompt-building behavior for Claude and Codex child sessions
 
 ## Repo Verification Flow
 
 ```mermaid
 flowchart TD
-    A["Edit installer, payload, or runtime"] --> B["Run python helper sanity checks"]
-    B --> C["Run npm run test:smoke"]
-    C --> D["Run npm run pack:dry-run"]
+    A["Edit installer, payload, or runtime"] --> B["Run npm run test:python"]
+    B --> C["Run npm run pack:dry-run"]
+    C --> D["Run npm run test:smoke"]
     D --> E["Run npm run verify"]
 ```
 
@@ -65,6 +67,15 @@ python3 -m story_automator
 ```
 
 with `PYTHONPATH` pointed at `source/src`.
+
+## Legacy Env Compatibility
+
+For one release cycle, fresh orchestration starts still honor:
+
+- `MAX_REVIEW_CYCLES`
+- `MAX_CRASH_RETRIES`
+
+Those values are resolved once during snapshot creation. Resume paths read the pinned snapshot, not the current shell env. Prefer `_bmad/bmm/story-automator.policy.json` for new configuration changes.
 
 ## What To Re-Check After Runtime Changes
 

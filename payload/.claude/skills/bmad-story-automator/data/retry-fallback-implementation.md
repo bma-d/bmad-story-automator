@@ -37,7 +37,7 @@ while [ $attempt -lt $max_attempts ] && [ "$success" = "false" ]; do
     # Execute workflow step
     session=$("$scripts" tmux-wrapper spawn {step} {epic} {story_id} \
         --agent "$current_agent" \
-        --command "$("$scripts" tmux-wrapper build-cmd {step} {story_id} --agent "$current_agent")")
+        --command "$("$scripts" tmux-wrapper build-cmd {step} {story_id} --agent "$current_agent" --state-file "$state_file")")
     result=$("$scripts" monitor-session "$session" --json --agent "$current_agent")
 
     # Cleanup session
@@ -75,9 +75,8 @@ fi
 
 ### Create Story
 ```bash
-after=$("$scripts" validate-story-creation count {story_id})
-validation=$("$scripts" validate-story-creation check {story_id} --before $before --after $after)
-validation_passed=$(echo "$validation" | jq -r '.valid')
+validation=$("$scripts" orchestrator-helper verify-step create {story_id} --state-file "$state_file")
+validation_passed=$(echo "$validation" | jq -r '.verified')
 ```
 
 ### Dev Story

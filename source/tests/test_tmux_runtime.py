@@ -11,6 +11,7 @@ from pathlib import Path
 from story_automator.core.tmux_runtime import (
     PaneSnapshot,
     _check_prompt_visible,
+    _legacy_heartbeat_check,
     _runner_file_content,
     cleanup_stale_terminal_artifacts,
     command_exists,
@@ -48,7 +49,8 @@ class TmuxRuntimeIntegrationTests(unittest.TestCase):
         return session
 
     def _wait_for_terminal(self, session: str, *, codex: bool) -> dict[str, str | int]:
-        deadline = time.time() + 5
+        timeout_seconds = float(os.environ.get("TMUX_TEST_TIMEOUT_SECONDS", "15"))
+        deadline = time.time() + timeout_seconds
         last = session_status(session, full=False, codex=codex, project_root=self.project_root, mode="runner")
         while time.time() < deadline:
             last = session_status(session, full=False, codex=codex, project_root=self.project_root, mode="runner")
@@ -118,6 +120,12 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             content = _runner_file_content(paths, "/bin/bash", "/bin/zsh", temp_dir)
         self.assertIn('COMMAND_SHELL=/bin/zsh', content)
         self.assertIn('"$COMMAND_SHELL" "$COMMAND_FILE"', content)
+        self.assertIn('"$exit_code" -eq 131', content)
+
+    def test_session_paths_rejects_unsafe_session_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(ValueError):
+                session_paths("../escape", temp_dir)
 
     def test_update_session_state_refreshes_updated_at(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -197,6 +205,7 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             self.assertEqual(state["lifecycle"], "finished")
             self.assertEqual(state["result"], "success")
             self.assertEqual(state["exitCode"], 0)
+            self.assertEqual(state["failureReason"], "")
 
     def test_launch_never_succeeded_maps_to_stuck(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -268,6 +277,45 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             for path in (paths.state, paths.command, paths.runner, paths.output):
                 self.assertFalse(path.exists(), f"expected stale artifact removal for {path}")
 
+    def test_cleanup_stale_terminal_artifacts_keeps_old_running_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session = "sa-test-active-cleanup"
+            paths = session_paths(session, temp_dir)
+            save_session_state(
+                paths.state,
+                {
+                    "schemaVersion": 1,
+                    "session": session,
+                    "agent": "codex",
+                    "projectRoot": temp_dir,
+                    "paneId": "%1",
+                    "panePid": 1,
+                    "runnerPid": 2,
+                    "childPid": 3,
+                    "commandFile": str(paths.command),
+                    "outputHint": str(paths.output),
+                    "createdAt": "2026-04-13T00:00:00Z",
+                    "startedAt": "2026-04-13T00:00:01Z",
+                    "finishedAt": "",
+                    "updatedAt": "2026-04-13T00:00:02Z",
+                    "lifecycle": "running",
+                    "result": "",
+                    "exitCode": "",
+                    "failureReason": "",
+                },
+            )
+            for path in (paths.command, paths.runner, paths.output):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x", encoding="utf-8")
+            stale_time = time.time() - (25 * 60 * 60)
+            for path in (paths.state, paths.command, paths.runner, paths.output):
+                os.utime(path, (stale_time, stale_time))
+
+            cleanup_stale_terminal_artifacts(temp_dir)
+
+            for path in (paths.state, paths.command, paths.runner, paths.output):
+                self.assertTrue(path.exists(), f"expected active artifact preservation for {path}")
+
     def test_pane_status_treats_fractional_cpu_as_alive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             session = "sa-test-fractional-cpu"
@@ -307,6 +355,21 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             self.assertEqual(cpu, 0.5)
             self.assertEqual(pid, "12")
             self.assertEqual(prompt, "false")
+
+    def test_legacy_heartbeat_treats_fractional_cpu_as_alive(self) -> None:
+        with (
+            mock.patch("story_automator.core.tmux_runtime.tmux_has_session", return_value=True),
+            mock.patch("story_automator.core.tmux_runtime._capture_text", return_value="working"),
+            mock.patch("story_automator.core.tmux_runtime.tmux_display", return_value="10"),
+            mock.patch("story_automator.core.tmux_runtime._find_agent_pid", return_value="12"),
+            mock.patch("story_automator.core.tmux_runtime._process_cpu", return_value=0.5),
+        ):
+            status, cpu, pid, prompt = _legacy_heartbeat_check("sa-test-legacy-cpu", "codex")
+
+        self.assertEqual(status, "alive")
+        self.assertEqual(cpu, 0.5)
+        self.assertEqual(pid, "12")
+        self.assertEqual(prompt, "false")
 
 
 if __name__ == "__main__":

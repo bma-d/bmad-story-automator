@@ -34,6 +34,7 @@ RECONCILE_GRACE_SECONDS = 1.0
 RUNNER_MODE_ENV = "SA_TMUX_RUNTIME"
 VALID_RUNTIME_MODES = {"legacy", "runner", "auto"}
 SIGNAL_EXIT_CODES = {130, 131, 143}
+SESSION_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,160}$")
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ def skill_prefix(agent: str) -> str:
 
 
 def session_paths(session: str, project_root: str | None = None) -> SessionPaths:
+    session = _validated_session_name(session)
     hash_value = project_hash(project_root)
     return SessionPaths(
         state=Path(f"/tmp/.sa-{hash_value}-session-{session}-state.json"),
@@ -163,17 +165,20 @@ def cleanup_stale_terminal_artifacts(project_root: str | None = None, ttl_second
     root_hash = project_hash(project_root)
     cutoff = time.time() - ttl_seconds
     tmp_dir = Path("/tmp")
+    protected_sessions: set[str] = set()
     state_paths = tmp_dir.glob(f".sa-{root_hash}-session-*-state.json")
     for state_path in state_paths:
+        session = _session_name_from_state_path(state_path)
+        if not session:
+            state_path.unlink(missing_ok=True)
+            continue
+        state = load_session_state(state_path)
+        if not _is_terminal_state(state):
+            protected_sessions.add(session)
         try:
             if state_path.stat().st_mtime > cutoff:
                 continue
         except OSError:
-            continue
-        state = load_session_state(state_path)
-        session = _session_name_from_state_path(state_path)
-        if not session:
-            state_path.unlink(missing_ok=True)
             continue
         if _is_terminal_state(state):
             cleanup_runtime_artifacts(session, project_root)
@@ -184,10 +189,14 @@ def cleanup_stale_terminal_artifacts(project_root: str | None = None, ttl_second
     ):
         for path in tmp_dir.glob(pattern):
             try:
-                if path.stat().st_mtime <= cutoff:
-                    path.unlink(missing_ok=True)
+                if path.stat().st_mtime > cutoff:
+                    continue
             except OSError:
                 continue
+            session = _session_name_from_artifact_path(path, root_hash)
+            if session and session in protected_sessions:
+                continue
+            path.unlink(missing_ok=True)
 
 
 def tmux_kill_session(session: str, project_root: str | None = None) -> None:
@@ -433,7 +442,6 @@ def _spawn_runner(session: str, command: str, selected_agent: str, project_root:
         paths.state,
         paneId=pane_id,
         panePid=respawned_pane_pid,
-        updatedAt=iso_now(),
     )
     return ("", 0)
 
@@ -689,7 +697,7 @@ def _runner_claude_prompt_completed(
             "lifecycle": "finished",
             "result": "success",
             "exitCode": 0,
-            "failureReason": "interactive_prompt_complete",
+            "failureReason": "",
         },
     )
     return True
@@ -885,7 +893,7 @@ def _legacy_heartbeat_check(session: str, selected_agent: str) -> tuple[str, flo
     if not agent_pid:
         return ("completed" if prompt == "true" else "dead", 0.0, "", prompt)
     cpu = _process_cpu(int(agent_pid))
-    status = "alive" if int(cpu) > 0 else "idle"
+    status = "alive" if cpu > 0.1 else "idle"
     if prompt == "true":
         status = "completed"
     return (status, cpu, agent_pid, prompt)
@@ -1030,7 +1038,7 @@ if [[ "$exit_code" -eq 0 ]]; then
 elif [[ "$exit_code" -eq 126 || "$exit_code" -eq 127 ]]; then
   result="spawn_error"
   failure_reason="runner_exec_failed"
-elif [[ "$exit_code" -eq 130 || "$exit_code" -eq 143 ]]; then
+elif [[ "$exit_code" -eq 130 || "$exit_code" -eq 131 || "$exit_code" -eq 143 ]]; then
   result="interrupted"
   failure_reason="signal_terminated"
 else
@@ -1268,6 +1276,33 @@ def _not_found_status() -> dict[str, str | int]:
     return {"status": "not_found", "todos_done": 0, "todos_total": 0, "active_task": "", "wait_estimate": 0, "session_state": "not_found"}
 
 
+def _validated_session_name(session: str) -> str:
+    if not SESSION_NAME_RE.fullmatch(session):
+        raise ValueError(f"invalid session name: {session!r}")
+    return session
+
+
 def _session_name_from_state_path(path: Path) -> str:
     match = re.match(r"\.sa-[^-]+-session-(.+)-state\.json$", path.name)
-    return match.group(1) if match else ""
+    if not match:
+        return ""
+    try:
+        return _validated_session_name(match.group(1))
+    except ValueError:
+        return ""
+
+
+def _session_name_from_artifact_path(path: Path, root_hash: str) -> str:
+    patterns = (
+        rf"\.sa-{re.escape(root_hash)}-session-(.+)-(?:command|runner)\.sh$",
+        rf"sa-{re.escape(root_hash)}-output-(.+)\.txt$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, path.name)
+        if not match:
+            continue
+        try:
+            return _validated_session_name(match.group(1))
+        except ValueError:
+            return ""
+    return ""

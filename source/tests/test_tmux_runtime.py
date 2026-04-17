@@ -11,7 +11,9 @@ from pathlib import Path
 from story_automator.core.tmux_runtime import (
     PaneSnapshot,
     _check_prompt_visible,
+    _claude_completion_marker_present,
     _legacy_heartbeat_check,
+    _reconcile_runner_state,
     _runner_file_content,
     cleanup_stale_terminal_artifacts,
     command_exists,
@@ -206,6 +208,49 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             self.assertEqual(state["result"], "success")
             self.assertEqual(state["exitCode"], 0)
             self.assertEqual(state["failureReason"], "")
+
+    def test_claude_completion_marker_ignores_generic_duration_text(self) -> None:
+        capture = "all tests passed for 3m 10s\n\n❯ "
+        self.assertFalse(_claude_completion_marker_present(capture))
+
+    def test_reconcile_dead_pane_without_status_maps_to_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session = "sa-test-pane-dead-unknown"
+            paths = session_paths(session, temp_dir)
+            save_session_state(
+                paths.state,
+                {
+                    "schemaVersion": 1,
+                    "session": session,
+                    "agent": "codex",
+                    "projectRoot": temp_dir,
+                    "paneId": "%1",
+                    "panePid": 1,
+                    "runnerPid": 1,
+                    "childPid": 2,
+                    "commandFile": str(paths.command),
+                    "outputHint": str(paths.output),
+                    "createdAt": "2026-04-14T18:43:59Z",
+                    "startedAt": "2026-04-14T18:43:59Z",
+                    "finishedAt": "",
+                    "updatedAt": "2026-04-14T18:44:00Z",
+                    "lifecycle": "running",
+                    "result": "",
+                    "exitCode": "",
+                    "failureReason": "",
+                },
+            )
+
+            reconciled = _reconcile_runner_state(
+                paths,
+                load_session_state(paths.state),
+                PaneSnapshot(exists=True, pane_id="%1", pane_pid=1, dead=True, dead_status=None),
+            )
+
+            self.assertEqual(reconciled["lifecycle"], "finished")
+            self.assertEqual(reconciled["result"], "unknown")
+            self.assertEqual(reconciled["exitCode"], "")
+            self.assertEqual(reconciled["failureReason"], "pane_dead_unknown_status")
 
     def test_launch_never_succeeded_maps_to_stuck(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

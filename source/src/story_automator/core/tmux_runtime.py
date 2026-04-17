@@ -632,7 +632,7 @@ def _reconcile_runner_state(paths: SessionPaths, state: dict[str, object], pane:
                 "updatedAt": finished,
                 "lifecycle": "finished",
                 "result": result,
-                "exitCode": pane_snapshot.dead_status if pane_snapshot.dead_status is not None else 0,
+                "exitCode": pane_snapshot.dead_status if pane_snapshot.dead_status is not None else "",
                 "failureReason": reason,
             },
         )
@@ -708,7 +708,7 @@ def _claude_completion_marker_present(capture: str) -> bool:
         return False
     return bool(
         re.search(
-            r"(?im)(?:\b(?:Baked|Done|Finished)\s+for\s+\d+m(?:\s+\d+s)?\b|\bfor\s+\d+m\s+\d+s\b)",
+            r"(?im)\b(?:Baked|Done|Finished)\s+for\s+\d+m(?:\s+\d+s)?\b",
             capture,
         )
     )
@@ -1231,8 +1231,10 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _result_from_exit_code(exit_code: int | None) -> tuple[str, str]:
-    if exit_code in (None, 0):
+    if exit_code == 0:
         return ("success", "")
+    if exit_code is None:
+        return ("unknown", "pane_dead_unknown_status")
     if exit_code in SIGNAL_EXIT_CODES:
         return ("interrupted", "pane_dead_signal")
     if exit_code in {126, 127}:

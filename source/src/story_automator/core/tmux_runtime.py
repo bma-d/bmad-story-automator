@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -88,14 +89,19 @@ def skill_prefix(agent: str) -> str:
     return "none" if agent == "codex" else "bmad-"
 
 
+def _artifact_base_dir() -> Path:
+    return Path(tempfile.gettempdir())
+
+
 def session_paths(session: str, project_root: str | None = None) -> SessionPaths:
     session = _validated_session_name(session)
     hash_value = project_hash(project_root)
+    base = _artifact_base_dir()
     return SessionPaths(
-        state=Path(f"/tmp/.sa-{hash_value}-session-{session}-state.json"),
-        command=Path(f"/tmp/.sa-{hash_value}-session-{session}-command.sh"),
-        runner=Path(f"/tmp/.sa-{hash_value}-session-{session}-runner.sh"),
-        output=Path(f"/tmp/sa-{hash_value}-output-{session}.txt"),
+        state=base / f".sa-{hash_value}-session-{session}-state.json",
+        command=base / f".sa-{hash_value}-session-{session}-command.sh",
+        runner=base / f".sa-{hash_value}-session-{session}-runner.sh",
+        output=base / f"sa-{hash_value}-output-{session}.txt",
     )
 
 
@@ -164,7 +170,7 @@ def cleanup_runtime_artifacts(session: str, project_root: str | None = None) -> 
 def cleanup_stale_terminal_artifacts(project_root: str | None = None, ttl_seconds: int = ARTIFACT_TTL_SECONDS) -> None:
     root_hash = project_hash(project_root)
     cutoff = time.time() - ttl_seconds
-    tmp_dir = Path("/tmp")
+    tmp_dir = _artifact_base_dir()
     protected_sessions: set[str] = set()
     state_paths = tmp_dir.glob(f".sa-{root_hash}-session-*-state.json")
     for state_path in state_paths:
@@ -288,7 +294,7 @@ def pane_status(session: str) -> str:
 def verify_or_create_output(output_file: str, session_name: str, hash_value: str, *, project_root: str | None = None) -> str:
     if output_file and file_exists(output_file) and Path(output_file).stat().st_size > 0:
         return output_file
-    expected = Path(f"/tmp/sa-{hash_value}-output-{session_name}.txt")
+    expected = _artifact_base_dir() / f"sa-{hash_value}-output-{session_name}.txt"
     if tmux_has_session(session_name):
         capture = _capture_text(session_name, start=-300)
         if capture:
@@ -432,8 +438,13 @@ def _spawn_runner(session: str, command: str, selected_agent: str, project_root:
         tmux_kill_session(session, str(root))
         return (respawn_out, respawn_code)
 
-    time.sleep(0.1)
-    respawned_pane_pid = _safe_int(tmux_display(session, "#{pane_pid}"))
+    deadline = time.time() + 1.0
+    respawned_pane_pid = 0
+    while time.time() < deadline:
+        respawned_pane_pid = _safe_int(tmux_display(session, "#{pane_pid}"))
+        if respawned_pane_pid > 0:
+            break
+        time.sleep(0.05)
     if respawned_pane_pid <= 0:
         tmux_kill_session(session, str(root))
         return ("failed to resolve respawned tmux pane pid\n", 1)

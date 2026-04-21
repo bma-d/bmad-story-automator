@@ -15,6 +15,7 @@ from story_automator.core.tmux_runtime import (
     _legacy_heartbeat_check,
     _reconcile_runner_state,
     _runner_file_content,
+    cleanup_runtime_artifacts,
     cleanup_stale_terminal_artifacts,
     command_exists,
     heartbeat_check,
@@ -41,9 +42,18 @@ class TmuxRuntimeIntegrationTests(unittest.TestCase):
         self.sessions: list[str] = []
 
     def tearDown(self) -> None:
-        for session in self.sessions:
-            tmux_kill_session(session, self.project_root)
-        self.temp_dir.cleanup()
+        sessions = getattr(self, "sessions", [])
+        try:
+            for session in sessions:
+                try:
+                    tmux_kill_session(session, self.project_root)
+                except Exception:
+                    pass
+        finally:
+            for session in sessions:
+                cleanup_runtime_artifacts(session, self.project_root)
+            if hasattr(self, "temp_dir"):
+                self.temp_dir.cleanup()
 
     def _session_name(self, suffix: str) -> str:
         session = f"sa-test-{suffix}-{int(time.time() * 1000)}"

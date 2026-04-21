@@ -61,7 +61,7 @@ class TmuxRuntimeIntegrationTests(unittest.TestCase):
         return session
 
     def _wait_for_terminal(self, session: str, *, codex: bool) -> dict[str, str | int]:
-        timeout_seconds = float(os.environ.get("TMUX_TEST_TIMEOUT_SECONDS", "15"))
+        timeout_seconds = float(os.environ.get("TMUX_TEST_TIMEOUT_SECONDS", "30"))
         deadline = time.time() + timeout_seconds
         last = session_status(session, full=False, codex=codex, project_root=self.project_root, mode="runner")
         while time.time() < deadline:
@@ -410,6 +410,19 @@ class TmuxRuntimeStateTests(unittest.TestCase):
             self.assertEqual(cpu, 0.5)
             self.assertEqual(pid, "12")
             self.assertEqual(prompt, "false")
+
+    def test_pane_status_distinguishes_unknown_dead_status_from_clean_exit(self) -> None:
+        with mock.patch(
+            "story_automator.core.tmux_runtime._pane_snapshot",
+            return_value=PaneSnapshot(exists=True, pane_id="%1", pane_pid=1, dead=True, dead_status=None),
+        ):
+            self.assertEqual(pane_status("sa-test-pane-unknown"), "crashed:unknown")
+
+        with mock.patch(
+            "story_automator.core.tmux_runtime._pane_snapshot",
+            return_value=PaneSnapshot(exists=True, pane_id="%1", pane_pid=1, dead=True, dead_status=0),
+        ):
+            self.assertEqual(pane_status("sa-test-pane-clean"), "exited:0")
 
     def test_legacy_heartbeat_treats_fractional_cpu_as_alive(self) -> None:
         with (

@@ -159,6 +159,19 @@ def update_session_state(path: str | Path, **updates: object) -> dict[str, objec
     return state
 
 
+def _wait_for_terminal_state(
+    path: str | Path,
+    max_wait: float = RECONCILE_GRACE_SECONDS,
+    tick: float = 0.05,
+) -> dict[str, object]:
+    deadline = time.time() + max_wait
+    state = load_session_state(path)
+    while not _is_terminal_state(state) and time.time() < deadline:
+        time.sleep(tick)
+        state = load_session_state(path)
+    return state
+
+
 def cleanup_runtime_artifacts(session: str, project_root: str | None = None) -> None:
     paths = session_paths(session, project_root)
     for path in (paths.state, paths.command, paths.runner, paths.output):
@@ -239,7 +252,8 @@ def heartbeat_check(
         return _legacy_heartbeat_check(session, selected_agent)
 
     prompt = _check_prompt_visible(session) if tmux_has_session(session) else "false"
-    state = load_session_state(session_paths(session, project_root).state)
+    state_path = session_paths(session, project_root).state
+    state = load_session_state(state_path)
     if not state:
         return ("error", 0.0, "", "state_missing")
 
@@ -256,7 +270,7 @@ def heartbeat_check(
     if _pid_alive(child_pid):
         return (("alive" if cpu > 0.1 else "idle"), cpu, str(child_pid), prompt)
 
-    time.sleep(RECONCILE_GRACE_SECONDS)
+    _wait_for_terminal_state(state_path)
     status = session_status(session, full=False, codex=selected_agent == "codex", project_root=project_root, mode=resolved_mode)
     public = str(status["session_state"])
     if public == "completed":
@@ -285,7 +299,9 @@ def pane_status(session: str) -> str:
     if not pane.exists:
         return "missing"
     if pane.dead:
-        if pane.dead_status not in (None, 0):
+        if pane.dead_status is None:
+            return "crashed:unknown"
+        if pane.dead_status != 0:
             return f"crashed:{pane.dead_status}"
         return "exited:0"
     return "alive"
@@ -517,8 +533,7 @@ def _runner_session_status(
     runner_alive = runner_pid > 0 and _pid_alive(runner_pid)
 
     if str(state.get("lifecycle") or "") == "running" and not child_alive:
-        time.sleep(RECONCILE_GRACE_SECONDS)
-        refreshed = load_session_state(paths.state)
+        refreshed = _wait_for_terminal_state(paths.state)
         if _is_terminal_state(refreshed):
             return _terminal_runner_status(session, refreshed, full=full, project_root=root)
         state = _reconcile_runner_state(paths, refreshed or state, pane)
@@ -788,12 +803,13 @@ def _legacy_claude_session_status(
         capture = _capture_text(session, start=-200)
         output = _write_capture(session, capture, project_root=root, max_lines=150)
         state_path.unlink(missing_ok=True)
+        wait_estimate = int(exit_code) if exit_code.isdigit() else 1
         return {
             "status": "crashed",
             "todos_done": 0,
             "todos_total": 0,
             "active_task": output if full else "",
-            "wait_estimate": int(exit_code or "1"),
+            "wait_estimate": wait_estimate,
             "session_state": "crashed",
         }
 

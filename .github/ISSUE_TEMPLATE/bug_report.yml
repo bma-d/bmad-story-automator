@@ -41,6 +41,56 @@ body:
       placeholder: npx bmad-story-automator /path/to/project
     validations:
       required: true
+  - type: dropdown
+    id: install_mode
+    attributes:
+      label: Install path type
+      options:
+        - not applicable / unknown
+        - npm package
+        - manual skill copy
+        - Claude plugin
+        - BMAD Method --modules
+        - BMAD Method --all-stable / --channel stable
+        - BMAD Method --pin
+        - BMAD Method --custom-source
+    validations:
+      required: true
+  - type: input
+    id: install_ref
+    attributes:
+      label: Installed tag, branch, or package version
+      description: Use `not applicable` if this is not an install or rollback issue.
+      placeholder: v1.14.2 / v1.15.0-next.1 / next/codex-runtime-support / npm version / not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: target_tool
+    attributes:
+      label: Target tool
+      options:
+        - claude-code
+        - codex
+        - both
+        - not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Install manifest
+      description: Paste `_bmad/_config/manifest.yaml`; include `_bmad/install-manifest.csv` too if it exists. Use `not applicable` if no BMAD install is involved.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: installer_output
+    attributes:
+      label: Exact installer stdout/stderr
+      description: Include the full output when the issue involves install, rollback, pin, or custom-source behavior. Use `not applicable` if no installer ran.
+      render: shell
+    validations:
+      required: true
   - type: textarea
     id: expected
     attributes:

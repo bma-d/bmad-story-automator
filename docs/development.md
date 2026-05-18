@@ -96,7 +96,7 @@ Publish steps:
 Recommended release checklist:
 
 1. `npm run verify`
-2. use [$secrets](/Users/joon/.agents/skills/secrets/SKILL.md) for npm auth material; search exact key names, then `secrets load <KEY>` into the publish shell; never print token values
+2. use `secrets` skill for npm auth material; search exact key names, then `secrets load <KEY>` into the publish shell; never print token values
 3. inspect the package dry-run output
 4. confirm README and docs match shipped behavior
 5. publish

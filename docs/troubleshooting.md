@@ -69,6 +69,49 @@ Use:
 
 Do not treat this as a runtime crash unless the run still tries to execute automate despite missing support.
 
+## BMAD Method Install Channel Reports
+
+For `baut` installs through BMAD Method, collect the exact command, requested
+tag or branch, target tool, full installer output, and `_bmad/_config/manifest.yaml`.
+Include `_bmad/install-manifest.csv` only if that file exists in the target
+project. Record whether the install used plain `--modules`, a stable-channel
+option such as `--all-stable` or `--channel stable`, `--pin`, or
+`--custom-source`.
+
+Stable Codex install path:
+
+```bash
+npx bmad-method install --modules baut --pin baut=v1.15.0 --tools codex --yes
+```
+
+Pre-Codex fallback path:
+
+```bash
+npx bmad-method install --modules baut --pin baut=v1.14.2 --tools claude-code --yes
+```
+
+`v1.14.2` predates Codex support, so this fallback returns testers to the
+Claude Code stable path.
+
+If a future preview later breaks, do not move the published tag. Fix forward
+with the next preview tag, then testers reinstall with:
+
+```bash
+npx bmad-method install --modules baut --pin baut=v1.15.0-next.2 --tools codex --yes
+```
+
+Avoid plain `--modules baut` for stable rollback while the official registry
+keeps `baut` on `default_channel: next`; that path resolves to `main` HEAD.
+`--next baut` also means `main` HEAD, not the preview branch, pull request, npm
+dist-tag, or prerelease git tag.
+
+For custom-source installs, do not trust exit code alone. Confirm the
+custom-source cache HEAD and installed Codex runtime files such as
+`runtime_layout.py` and `stop_hooks.py`. If the custom source uses official
+module code `baut`, BMAD-METHOD 6.6.0 can still record official registry
+`next`/`main` metadata in `_bmad/_config/manifest.yaml`; do not treat that
+manifest field as proof that the branch content failed to install.
+
 ## Sprint Status Drift
 
 If the state doc and `sprint-status.yaml` disagree:

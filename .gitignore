@@ -9,3 +9,4 @@ dist/
 skills/bmad-story-automator/build/
 skills/bmad-story-automator/dist/
 skills/bmad-story-automator/*.egg-info/
+docs/plans/versioning/impl_artifacts/

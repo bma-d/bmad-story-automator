@@ -63,7 +63,7 @@ Or install from anywhere:
 npx bmad-story-automator /absolute/path/to/your-bmad-project
 ```
 
-Then run the installed skill from Claude:
+Then run the installed skill from your supported entrypoint session:
 
 ```text
 Use the bmad-story-automator skill.
@@ -75,6 +75,36 @@ Manual skill copy:
 cp -a skills/bmad-story-automator /absolute/path/to/project/.claude/skills/
 cp -a skills/bmad-story-automator-review /absolute/path/to/project/.claude/skills/
 ```
+
+## BMAD Method Install Channels
+
+If you install Automator through the BMAD Method official module code `baut`, choose the channel explicitly. Run these from the target BMAD project root, or add `--directory /absolute/path/to/your-bmad-project`.
+
+Stable install, using the latest pure-semver tag:
+
+```bash
+npx bmad-method install --modules baut --all-stable --tools claude-code --yes
+```
+
+Stable pin to the first Codex-capable stable tag:
+
+```bash
+npx bmad-method install --modules baut --pin baut=v1.15.0 --tools codex --yes
+```
+
+Rollback to the pre-Codex stable tag if needed:
+
+```bash
+npx bmad-method install --modules baut --pin baut=v1.14.2 --tools claude-code --yes
+```
+
+Codex preview branch, only for testing unpublished follow-up fixes:
+
+```bash
+npx bmad-method install --custom-source https://github.com/bmad-code-org/bmad-automator@next/codex-runtime-support --tools codex --yes
+```
+
+Current caveat: the official registry sets `baut` to `default_channel: next`, so unqualified `--modules baut` and `--next baut` resolve to `main` HEAD. After this stable release lands on `main`, those commands include Codex support, but use `--all-stable` or `--pin` when you need reproducible stable behavior. For custom-source branch testing, verify the custom-source cache HEAD and installed runtime files instead of trusting installer exit status, summary text, or manifest channel fields alone.
 
 ## Expectations
 
